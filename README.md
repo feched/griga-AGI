@@ -33,6 +33,26 @@ pip install -r requirements.txt
 python -m griga --version
 ```
 
+### PostgreSQL
+
+```powershell
+# 1. Создать базы. Если psql не в PATH — полный путь:
+#    & "C:\Program Files\PostgreSQL\18\bin\psql.exe"
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -c "CREATE DATABASE griga_v01;"
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -c "CREATE DATABASE griga_v01_test;"
+
+# 2. Скопировать .env.example в .env и указать свой пароль
+Copy-Item .env.example .env
+
+# 3. Создать таблицы users / nodes / edges
+.\.venv\Scripts\python.exe -m scripts.init_db
+
+# 4. Тесты (используют griga_v01_test и очищают её)
+.\.venv\Scripts\python.exe -m pytest
+```
+
+Схема лежит в [`griga/storage/schema.sql`](griga/storage/schema.sql).
+
 ## Структура
 
 ```text
@@ -49,6 +69,7 @@ griga/
   interfaces/      CLI (позже — Telegram/VK/Discord/web)
 docs/              спецификация и ADR
 eval/              eval-наборы v0.1
+scripts/           init_db и служебные скрипты
 tests/             юнит- и интеграционные тесты
 ```
 

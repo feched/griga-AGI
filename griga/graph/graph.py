@@ -1,0 +1,173 @@
+"""Граф знаний в памяти с записью в PostgreSQL (ADR-006, шаг 4)."""
+
+from __future__ import annotations
+
+import uuid
+from collections import defaultdict
+from typing import Iterable
+
+from griga.graph.edge import Edge
+from griga.graph.node import Node, NodeType
+from griga.graph.relations import RelationType
+from griga.storage.postgres import PostgresStorage
+
+
+class KnowledgeGraph:
+    """Двухуровневый граф: PostgreSQL — истина, память — быстрый доступ.
+
+    Инвариант: новый узел/ребро сначала сохраняется в БД, и только после
+    успешной записи попадает в память. Если save упал — память не меняется.
+    """
+
+    def __init__(self, storage: PostgresStorage) -> None:
+        self.storage = storage
+        self.nodes: dict[uuid.UUID, Node] = {}
+        self.edges: dict[uuid.UUID, Edge] = {}
+        self._by_key: dict[tuple[str, NodeType, uuid.UUID | None], Node] = {}
+        self._by_name: dict[tuple[str, uuid.UUID | None], list[Node]] = defaultdict(
+            list
+        )
+        self._out_edges: dict[uuid.UUID, list[Edge]] = defaultdict(list)
+        self._in_edges: dict[uuid.UUID, list[Edge]] = defaultdict(list)
+        self.reload()
+
+    # --- loading / indexes --------------------------------------------
+
+    def reload(self) -> "KnowledgeGraph":
+        nodes = self.storage.load_all_nodes()
+        edges = self.storage.load_all_edges()
+        self.clear()
+        for node in nodes:
+            self._index_node(node)
+        for edge in edges:
+            self._index_edge(edge)
+        return self
+
+    def clear(self) -> None:
+        self.nodes.clear()
+        self.edges.clear()
+        self._by_key.clear()
+        self._by_name.clear()
+        self._out_edges.clear()
+        self._in_edges.clear()
+
+    @staticmethod
+    def _key(
+        name: str, node_type: NodeType, owner_id: uuid.UUID | None
+    ) -> tuple[str, NodeType, uuid.UUID | None]:
+        return (name.strip().casefold(), node_type, owner_id)
+
+    def _index_node(self, node: Node) -> None:
+        self.nodes[node.id] = node
+        self._by_key[self._key(node.name, node.node_type, node.owner_id)] = node
+        self._by_name[(node.name.strip().casefold(), node.owner_id)].append(node)
+
+    def _index_edge(self, edge: Edge) -> None:
+        self.edges[edge.id] = edge
+        self._out_edges[edge.source_id].append(edge)
+        self._in_edges[edge.target_id].append(edge)
+
+    # --- lookup --------------------------------------------------------
+
+    def get_node(self, node_id: uuid.UUID | str) -> Node | None:
+        node_uuid = (
+            node_id if isinstance(node_id, uuid.UUID) else uuid.UUID(str(node_id))
+        )
+        return self.nodes.get(node_uuid)
+
+    def find_node(
+        self,
+        name: str,
+        node_type: NodeType | None = None,
+        owner_id: uuid.UUID | None = None,
+    ) -> Node | None:
+        if node_type is not None:
+            if not isinstance(node_type, NodeType):
+                node_type = NodeType(node_type)
+            return self._by_key.get(self._key(name, node_type, owner_id))
+
+        candidates = self._by_name.get((name.strip().casefold(), owner_id), [])
+        return candidates[0] if candidates else None
+
+    def find_edge(
+        self,
+        source_id: uuid.UUID,
+        target_id: uuid.UUID,
+        relation_type: RelationType | str,
+    ) -> Edge | None:
+        if not isinstance(relation_type, RelationType):
+            relation_type = RelationType(relation_type)
+
+        for edge in self._out_edges.get(source_id, []):
+            if edge.target_id == target_id and edge.relation_type == relation_type:
+                return edge
+        return None
+
+    def get_out_edges(self, node_id: uuid.UUID) -> list[Edge]:
+        return list(self._out_edges.get(node_id, []))
+
+    def get_in_edges(self, node_id: uuid.UUID) -> list[Edge]:
+        return list(self._in_edges.get(node_id, []))
+
+    def neighbors(self, node_id: uuid.UUID) -> set[uuid.UUID]:
+        result = {edge.target_id for edge in self._out_edges.get(node_id, [])}
+        result.update(edge.source_id for edge in self._in_edges.get(node_id, []))
+        return result
+
+    # --- writes --------------------------------------------------------
+
+    def add_node(self, node: Node) -> Node:
+        """Сохраняет узел в БД и добавляет в память.
+
+        Если такой же (имя+тип+владелец) уже есть — возвращает существующий:
+        дедупликация важнее, чем создание второго «Растения».
+        """
+        existing = self.find_node(node.name, node.node_type, node.owner_id)
+        if existing is not None:
+            return existing
+
+        node.id = self.storage.save_node(node)
+        self._index_node(node)
+        return node
+
+    def add_edge(self, edge: Edge) -> Edge:
+        source = self.nodes.get(edge.source_id)
+        target = self.nodes.get(edge.target_id)
+        if source is None or target is None:
+            raise ValueError("Both edge endpoints must exist in the graph")
+
+        if (
+            source.owner_id is not None
+            and target.owner_id is not None
+            and source.owner_id != target.owner_id
+        ):
+            raise ValueError("Edge cannot connect nodes of different owners")
+
+        if edge.owner_id is None:
+            edge.owner_id = source.owner_id or target.owner_id
+
+        existing = self.find_edge(
+            edge.source_id, edge.target_id, edge.relation_type
+        )
+        if existing is not None:
+            return existing
+
+        edge.id = self.storage.save_edge(edge)
+        self._index_edge(edge)
+        return edge
+
+    # --- introspection -------------------------------------------------
+
+    @property
+    def node_count(self) -> int:
+        return len(self.nodes)
+
+    @property
+    def edge_count(self) -> int:
+        return len(self.edges)
+
+    def iter_nodes(self) -> Iterable[Node]:
+        return self.nodes.values()
+
+    def __len__(self) -> int:
+        return len(self.nodes)
