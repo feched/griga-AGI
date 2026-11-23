@@ -53,6 +53,16 @@ Copy-Item .env.example .env
 
 Схема лежит в [`griga/storage/schema.sql`](griga/storage/schema.sql).
 
+### Активация (ADR-003)
+
+```powershell
+# Демо: волна от узла «Трава» по графу из PostgreSQL
+.\.venv\Scripts\python.exe -m scripts.demo_spread
+```
+
+Параметры `D=0.85`, `T=0.1`, `max_depth=3`, `top_k=5` берутся из `config.toml`.
+Формула передачи: `A * W * D / max(2, log(1 + степень))`, затем clamp до `1.0`.
+
 ## Структура
 
 ```text
