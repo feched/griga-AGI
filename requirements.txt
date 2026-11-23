@@ -1,0 +1,8 @@
+numpy==2.2.6
+psycopg2-binary==2.9.12
+pymorphy2==0.9.1
+pymorphy2-dicts-ru==2.4.417127.4579844
+navec==0.10.0
+ufal.udpipe==1.4.0.1
+tomli==2.4.1
+pytest==9.1.1

@@ -1,0 +1,39 @@
+# Параметры v0.1. Значения зафиксированы в ADR-003 и не должны жить в коде.
+
+[activation]
+# ADR-003: A_new(neighbor) += A(current) * W(edge) * decay
+decay = 0.85
+# Порог отсечения: узлы слабее не считаются активными.
+threshold = 0.1
+# Максимальная глубина волны.
+max_depth = 3
+# Ограничение активации узла.
+clamp = 1.0
+# Деление передачи на max(2, log(1 + степень узла)).
+fan_effect = true
+
+[learning]
+# ADR-003: delta_w = eta * A_A * A_B; только для существующих рёбер.
+eta = 0.05
+min_weight = 0.05
+max_weight = 1.0
+# Подтверждение/коррекция пользователем.
+supervised_delta = 0.2
+# Глобальное забывание: W = W * forgetting_factor.
+forgetting_factor = 0.99
+forgetting_every_turns = 1000
+
+[generation]
+# ADR-004: максимум попыток подобрать намерение/конструкцию.
+max_attempts = 3
+
+[storage]
+# ADR-015: v0.1 — только PostgreSQL.
+backend = "postgres"
+database_url_env = "GRIGA_DATABASE_URL"
+
+[memory]
+# ADR-003: рабочая память — топ активных узлов для генерации.
+top_k = 5
+# Рабочая память живёт в рамках сессии/диалога, не в долговременном графе.
+working_ttl_turns = 20
