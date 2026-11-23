@@ -37,3 +37,9 @@ database_url_env = "GRIGA_DATABASE_URL"
 top_k = 5
 # Рабочая память живёт в рамках сессии/диалога, не в долговременном графе.
 working_ttl_turns = 20
+
+[perception]
+# ADR-002: локальный UDPipe, без внешних API.
+use_syntax = true
+# Путь относительно корня проекта. Если файла нет — включается эвристический fallback.
+udpipe_model = "data/models/russian-syntagrus-ud-2.5-191206.udpipe"

@@ -63,6 +63,21 @@ Copy-Item .env.example .env
 Параметры `D=0.85`, `T=0.1`, `max_depth=3`, `top_k=5` берутся из `config.toml`.
 Формула передачи: `A * W * D / max(2, log(1 + степень))`, затем clamp до `1.0`.
 
+### Восприятие (ADR-002)
+
+```powershell
+# Разбор текста: узлы, утверждения, маркеры (без записи в БД)
+.\.venv\Scripts\python.exe -m scripts.demo_perception "Трава растёт на газоне."
+
+# Разбор + запись фактов в PostgreSQL + волна активации
+.\.venv\Scripts\python.exe -m scripts.demo_perception --write
+```
+
+Парсер использует локальный UDPipe (`data/models/*.udpipe`) и pymorphy2.
+Модель не хранится в git: положи файл
+`russian-syntagrus-ud-2.5-191206.udpipe` в `data/models/`. Если модели нет,
+включается эвристический fallback на pymorphy2, и парсер продолжает работать.
+
 ## Структура
 
 ```text

@@ -55,12 +55,21 @@ class MemoryConfig:
 
 
 @dataclass(frozen=True)
+class PerceptionConfig:
+    """ADR-002: локальный синтаксический парсер, без внешних API."""
+
+    use_syntax: bool = True
+    udpipe_model: str = "data/models/russian-syntagrus-ud-2.5-191206.udpipe"
+
+
+@dataclass(frozen=True)
 class Config:
     activation: ActivationConfig = ActivationConfig()
     learning: LearningConfig = LearningConfig()
     generation: GenerationConfig = GenerationConfig()
     storage: StorageConfig = StorageConfig()
     memory: MemoryConfig = MemoryConfig()
+    perception: PerceptionConfig = PerceptionConfig()
 
 
 def _section(data: dict, name: str) -> dict:
@@ -95,6 +104,7 @@ def load_config(path: str | Path | None = None) -> Config:
     generation = _section(data, "generation")
     storage = _section(data, "storage")
     memory = _section(data, "memory")
+    perception = _section(data, "perception")
 
     cfg = Config(
         activation=ActivationConfig(
@@ -122,6 +132,15 @@ def load_config(path: str | Path | None = None) -> Config:
         memory=MemoryConfig(
             top_k=_integer(memory, "top_k", 5),
             working_ttl_turns=_integer(memory, "working_ttl_turns", 20),
+        ),
+        perception=PerceptionConfig(
+            use_syntax=bool(perception.get("use_syntax", True)),
+            udpipe_model=str(
+                perception.get(
+                    "udpipe_model",
+                    "data/models/russian-syntagrus-ud-2.5-191206.udpipe",
+                )
+            ),
         ),
     )
     _validate(cfg)

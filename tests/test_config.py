@@ -26,6 +26,8 @@ def test_default_config_matches_adr_003():
     assert cfg.generation.max_attempts == 3
     assert cfg.memory.top_k == 5
     assert cfg.storage.backend == "postgres"
+    assert cfg.perception.use_syntax is True
+    assert cfg.perception.udpipe_model.endswith(".udpipe")
 
 
 def test_non_postgres_backend_is_rejected(tmp_path):
