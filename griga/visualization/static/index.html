@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Griga v0.1 — активный граф</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <h1>Griga <span>v0.1</span></h1>
+      <p>активный граф знаний</p>
+    </div>
+
+    <form id="search-form" class="search" autocomplete="off">
+      <input id="search-input" type="text" placeholder="Активировать узел, например «трава»" />
+      <button type="submit">Активировать</button>
+    </form>
+
+    <div class="actions">
+      <button id="refresh" type="button" class="ghost">Обновить</button>
+      <button id="reset" type="button" class="ghost">Сбросить</button>
+    </div>
+  </header>
+
+  <main>
+    <aside class="panel">
+      <h2>Состояние</h2>
+      <dl class="stats">
+        <div><dt>Узлы</dt><dd id="stat-nodes">0</dd></div>
+        <div><dt>Рёбра</dt><dd id="stat-edges">0</dd></div>
+        <div><dt>Активные</dt><dd id="stat-active">0</dd></div>
+        <div><dt>Порог</dt><dd id="stat-threshold">—</dd></div>
+        <div><dt>top-K</dt><dd id="stat-topk">—</dd></div>
+      </dl>
+
+      <h2>Запрос</h2>
+      <p id="last-query" class="muted">нет активации</p>
+
+      <h2>Легенда</h2>
+      <ul id="legend" class="legend"></ul>
+
+      <h2>Как это работает</h2>
+      <p class="muted">
+        Волна активации стартует от выбранного узла, затухает с каждым шагом
+        и оставляет в рабочей памяти top-K узлов. Размер и яркость узла
+        показывают активацию, толщина ребра — вес связи.
+      </p>
+    </aside>
+
+    <section class="stage">
+      <svg id="graph" role="img" aria-label="Граф знаний"></svg>
+      <div id="empty" class="empty" hidden>
+        Граф пуст. Добавь факты через <code>griga chat</code> или демо-скрипт.
+      </div>
+      <div id="error" class="error" hidden></div>
+    </section>
+  </main>
+
+  <script src="/vendor/d3.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

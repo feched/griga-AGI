@@ -28,11 +28,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="одна реплика для chat, без интерактивного цикла",
     )
     parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="адрес визуализатора (по умолчанию 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        help="порт визуализатора (по умолчанию 8765, 0 — свободный)",
+    )
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="не открывать браузер автоматически",
+    )
+    parser.add_argument(
+        "--node",
+        default=None,
+        help="узел для стартовой активации в визуализаторе",
+    )
+    parser.add_argument(
         "command",
         nargs="?",
-        choices=["chat", "status"],
+        choices=["chat", "status", "visualize"],
         default="status",
-        help="chat — диалог, status — состояние проекта",
+        help="chat — диалог, visualize — граф в браузере, status — состояние",
     )
     return parser
 
@@ -82,6 +103,35 @@ def _run_chat(cfg, once_text: str | None = None) -> int:
     return 0
 
 
+def _run_visualize(cfg, args) -> int:
+    from griga.env import load_dotenv
+    from griga.graph.graph import KnowledgeGraph
+    from griga.storage.postgres import PostgresStorage
+    from griga.visualization import VisualizerServer
+
+    load_dotenv()
+    try:
+        storage = PostgresStorage()
+        storage.init_schema()
+    except Exception as exc:  # noqa: BLE001 - CLI должен объяснить сбой
+        print(f"Не удалось подключиться к PostgreSQL: {exc}")
+        print("Проверь .env и запусти .\\.venv\\Scripts\\python.exe -m scripts.init_db")
+        return 1
+
+    with storage:
+        graph = KnowledgeGraph(storage)
+        server = VisualizerServer(
+            graph, cfg, host=args.host, port=args.port
+        )
+        if args.node:
+            if server.activate(args.node) is None:
+                print(f"Узел {args.node!r} не найден в графе.")
+                return 1
+        server.serve_forever(open_browser=not args.no_browser)
+
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
@@ -93,6 +143,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "chat":
         return _run_chat(cfg, args.text)
+
+    if args.command == "visualize":
+        return _run_visualize(cfg, args)
 
     print(f"Griga AGI v0.1 ({__version__}) — каркас проекта.")
     print(f"storage: {cfg.storage.backend} ({cfg.storage.database_url_env})")

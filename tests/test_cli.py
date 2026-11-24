@@ -22,3 +22,22 @@ def test_chat_command_and_single_text_option_are_available():
     args = build_parser().parse_args(["chat", "--text", "Привет!"])
     assert args.command == "chat"
     assert args.text == "Привет!"
+
+
+def test_visualize_command_options_are_available():
+    args = build_parser().parse_args(
+        [
+            "visualize",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "9000",
+            "--no-browser",
+            "--node",
+            "трава",
+        ]
+    )
+    assert args.command == "visualize"
+    assert args.port == 9000
+    assert args.no_browser is True
+    assert args.node == "трава"
