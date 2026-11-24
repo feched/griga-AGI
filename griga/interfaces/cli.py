@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -49,16 +50,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="узел для стартовой активации в визуализаторе",
     )
     parser.add_argument(
+        "--user",
+        default=None,
+        help=(
+            "имя пользователя для личного подграфа "
+            "(по умолчанию GRIGA_USER_NAME или «пользователь»)"
+        ),
+    )
+    parser.add_argument(
         "command",
         nargs="?",
-        choices=["chat", "status", "visualize"],
+        choices=["chat", "status", "visualize", "users"],
         default="status",
-        help="chat — диалог, visualize — граф в браузере, status — состояние",
+        help=(
+            "chat — диалог, visualize — граф в браузере, "
+            "users — список пользователей, status — состояние"
+        ),
     )
     return parser
 
 
-def _run_chat(cfg, once_text: str | None = None) -> int:
+def _resolve_user(storage, name: str | None):
+    from griga.memory import DEFAULT_USER_NAME, UserDirectory
+
+    chosen = name or os.environ.get("GRIGA_USER_NAME") or DEFAULT_USER_NAME
+    return UserDirectory(storage).ensure(chosen)
+
+
+def _run_chat(
+    cfg,
+    once_text: str | None = None,
+    user_name: str | None = None,
+) -> int:
     from griga.dialogue import Dialogue
     from griga.env import load_dotenv
     from griga.graph.graph import KnowledgeGraph
@@ -74,14 +97,16 @@ def _run_chat(cfg, once_text: str | None = None) -> int:
         return 1
 
     with storage:
-        graph = KnowledgeGraph(storage)
-        dialogue = Dialogue(graph, cfg)
+        user = _resolve_user(storage, user_name)
+        graph = KnowledgeGraph(storage, owner_id=user.id)
+        dialogue = Dialogue(graph, cfg, owner_id=user.id)
 
         if once_text:
             turn = dialogue.turn(once_text)
             print(f"Гриша: {turn.response}")
             return 0
 
+        print(f"Пользователь: {user.name}")
         print("Гриша v0.1. Пиши факты или вопросы. Выход: «выход».")
         while True:
             try:
@@ -119,7 +144,9 @@ def _run_visualize(cfg, args) -> int:
         return 1
 
     with storage:
-        graph = KnowledgeGraph(storage)
+        user = _resolve_user(storage, args.user)
+        graph = KnowledgeGraph(storage, owner_id=user.id)
+        print(f"Пользователь: {user.name}")
         server = VisualizerServer(
             graph, cfg, host=args.host, port=args.port
         )
@@ -128,6 +155,31 @@ def _run_visualize(cfg, args) -> int:
                 print(f"Узел {args.node!r} не найден в графе.")
                 return 1
         server.serve_forever(open_browser=not args.no_browser)
+
+    return 0
+
+
+def _run_users(cfg) -> int:
+    from griga.env import load_dotenv
+    from griga.memory import UserDirectory
+    from griga.storage.postgres import PostgresStorage
+
+    load_dotenv()
+    try:
+        storage = PostgresStorage()
+        storage.init_schema()
+    except Exception as exc:  # noqa: BLE001 - CLI должен объяснить сбой
+        print(f"Не удалось подключиться к PostgreSQL: {exc}")
+        print("Проверь .env и запусти .\\.venv\\Scripts\\python.exe -m scripts.init_db")
+        return 1
+
+    with storage:
+        users = UserDirectory(storage).list_users()
+        if not users:
+            print("Пользователей пока нет. Первый появится после `griga chat`.")
+            return 0
+        for user in users:
+            print(f"{user.id}  {user.name}")
 
     return 0
 
@@ -142,10 +194,13 @@ def main(argv: list[str] | None = None) -> int:
     cfg = load_config(args.config)
 
     if args.command == "chat":
-        return _run_chat(cfg, args.text)
+        return _run_chat(cfg, args.text, args.user)
 
     if args.command == "visualize":
         return _run_visualize(cfg, args)
+
+    if args.command == "users":
+        return _run_users(cfg)
 
     print(f"Griga AGI v0.1 ({__version__}) — каркас проекта.")
     print(f"storage: {cfg.storage.backend} ({cfg.storage.database_url_env})")

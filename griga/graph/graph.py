@@ -19,8 +19,16 @@ class KnowledgeGraph:
     успешной записи попадает в память. Если save упал — память не меняется.
     """
 
-    def __init__(self, storage: PostgresStorage) -> None:
+    def __init__(
+        self,
+        storage: PostgresStorage,
+        *,
+        owner_id: uuid.UUID | None = None,
+        include_global: bool = True,
+    ) -> None:
         self.storage = storage
+        self.owner_id = owner_id
+        self.include_global = include_global
         self.nodes: dict[uuid.UUID, Node] = {}
         self.edges: dict[uuid.UUID, Edge] = {}
         self._by_key: dict[tuple[str, NodeType, uuid.UUID | None], Node] = {}
@@ -34,14 +42,22 @@ class KnowledgeGraph:
     # --- loading / indexes --------------------------------------------
 
     def reload(self) -> "KnowledgeGraph":
-        nodes = self.storage.load_all_nodes()
-        edges = self.storage.load_all_edges()
+        nodes = self.storage.load_all_nodes(
+            self.owner_id, include_global=self.include_global
+        )
+        edges = self.storage.load_all_edges(
+            self.owner_id, include_global=self.include_global
+        )
         self.clear()
         for node in nodes:
             self._index_node(node)
         for edge in edges:
             self._index_edge(edge)
         return self
+
+    def for_owner(self, owner_id: uuid.UUID) -> "KnowledgeGraph":
+        """Новое представление графа: общий слой + подграф пользователя."""
+        return KnowledgeGraph(self.storage, owner_id=owner_id)
 
     def clear(self) -> None:
         self.nodes.clear()
@@ -81,11 +97,24 @@ class KnowledgeGraph:
         node_type: NodeType | None = None,
         owner_id: uuid.UUID | None = None,
     ) -> Node | None:
-        if node_type is not None:
-            if not isinstance(node_type, NodeType):
-                node_type = NodeType(node_type)
-            return self._by_key.get(self._key(name, node_type, owner_id))
+        if node_type is not None and not isinstance(node_type, NodeType):
+            node_type = NodeType(node_type)
 
+        # В графе пользователя личный узел важнее глобального.
+        if owner_id is None and self.owner_id is not None:
+            node = self._find_exact(name, node_type, self.owner_id)
+            if node is not None:
+                return node
+        return self._find_exact(name, node_type, owner_id)
+
+    def _find_exact(
+        self,
+        name: str,
+        node_type: NodeType | None,
+        owner_id: uuid.UUID | None,
+    ) -> Node | None:
+        if node_type is not None:
+            return self._by_key.get(self._key(name, node_type, owner_id))
         candidates = self._by_name.get((name.strip().casefold(), owner_id), [])
         return candidates[0] if candidates else None
 

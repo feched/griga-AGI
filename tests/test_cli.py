@@ -41,3 +41,14 @@ def test_visualize_command_options_are_available():
     assert args.port == 9000
     assert args.no_browser is True
     assert args.node == "трава"
+
+
+def test_user_option_is_available_for_chat_and_visualize():
+    chat = build_parser().parse_args(["chat", "--user", "Алиса"])
+    assert chat.user == "Алиса"
+
+    visualize = build_parser().parse_args(["visualize", "--user", "Боб"])
+    assert visualize.user == "Боб"
+
+    users = build_parser().parse_args(["users"])
+    assert users.command == "users"
