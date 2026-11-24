@@ -1,5 +1,5 @@
 from griga import __version__
-from griga.interfaces.cli import main
+from griga.interfaces.cli import build_parser, main
 
 
 def test_version(capsys):
@@ -14,8 +14,11 @@ def test_status_reports_adr_parameters(capsys):
     assert "D=0.85" in out
     assert "T=0.1" in out
     assert "eta=0.05" in out
+    assert "perception:" in out
+    assert "generation: max_attempts=3" in out
 
 
-def test_chat_is_not_implemented_yet(capsys):
-    assert main(["chat"]) == 2
-    assert "не реализован" in capsys.readouterr().out
+def test_chat_command_and_single_text_option_are_available():
+    args = build_parser().parse_args(["chat", "--text", "Привет!"])
+    assert args.command == "chat"
+    assert args.text == "Привет!"

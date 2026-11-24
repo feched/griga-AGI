@@ -1,0 +1,433 @@
+{
+  "constructions": [
+    {
+      "id": "greet_hello",
+      "intent": "поздороваться",
+      "template": "Привет! Я Гриша. Что расскажешь?",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 1.0
+    },
+    {
+      "id": "greet_again",
+      "intent": "поздороваться",
+      "template": "Здравствуй. Спрашивай или рассказывай — я слушаю.",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 0.8
+    },
+    {
+      "id": "empathize_question",
+      "intent": "выразить_эмпатию",
+      "template": "Похоже, тебе {EMOTION_ADV}. Хочешь об этом поговорить?",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 1.0
+    },
+    {
+      "id": "empathize_generic",
+      "intent": "выразить_эмпатию",
+      "template": "Слышу тебя. Что происходит?",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 0.9
+    },
+    {
+      "id": "empathize_joy",
+      "intent": "выразить_эмпатию",
+      "template": "Здорово! Рад за тебя.",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 1.2,
+      "emotion": "радость"
+    },
+    {
+      "id": "empathize_sad",
+      "intent": "выразить_эмпатию",
+      "template": "Понимаю. Если хочешь, расскажи, что случилось.",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 1.2,
+      "emotion": "грусть"
+    },
+    {
+      "id": "answer_is_a",
+      "intent": "ответить_прямо",
+      "template": "{X} — это {Y}.",
+      "graph_pattern": {"relation": "is_a", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 1.0
+    },
+    {
+      "id": "answer_is_a_alt",
+      "intent": "ответить_прямо",
+      "template": "{X} относится к категории «{Y}».",
+      "graph_pattern": {"relation": "is_a", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 0.8
+    },
+    {
+      "id": "answer_is_a_reverse",
+      "intent": "ответить_прямо",
+      "template": "К категории «{X}» относится {Y}.",
+      "graph_pattern": {"relation": "is_a", "direction": "reverse"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 1.0
+    },
+    {
+      "id": "answer_property",
+      "intent": "ответить_прямо",
+      "template": "{X} — {Y}.",
+      "graph_pattern": {"relation": "has_property", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "adjective", "case": "nominative", "agree_with": "X"}
+      },
+      "weight": 1.0
+    },
+    {
+      "id": "answer_part",
+      "intent": "ответить_прямо",
+      "template": "{X} — часть {Y}.",
+      "graph_pattern": {"relation": "part_of", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "genitive"}
+      },
+      "weight": 1.0
+    },
+    {
+      "id": "answer_part_reverse",
+      "intent": "ответить_прямо",
+      "template": "В состав {X} входит {Y}.",
+      "graph_pattern": {"relation": "part_of", "direction": "reverse"},
+      "slots": {
+        "X": {"pos": "noun", "case": "genitive"},
+        "Y": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 1.0
+    },
+    {
+      "id": "answer_verb",
+      "intent": "ответить_прямо",
+      "template": "{X} {VERB_PRES} {PREP} {Y}.",
+      "graph_pattern": {"relation": "related_to", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "auto"}
+      },
+      "weight": 1.1
+    },
+    {
+      "id": "answer_verb_noprep",
+      "intent": "ответить_прямо",
+      "template": "{X} {VERB_PRES} {Y}.",
+      "graph_pattern": {"relation": "related_to", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "accusative"}
+      },
+      "weight": 1.1
+    },
+    {
+      "id": "answer_related",
+      "intent": "ответить_прямо",
+      "template": "Я знаю про связь: {X} и {Y}.",
+      "graph_pattern": {"relation": "related_to", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 0.7
+    },
+    {
+      "id": "answer_related_reverse",
+      "intent": "ответить_прямо",
+      "template": "Я знаю про связь: {X} и {Y}.",
+      "graph_pattern": {"relation": "related_to", "direction": "reverse"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 0.7
+    },
+    {
+      "id": "yes_is_a",
+      "intent": "ответить_прямо",
+      "template": "Да, {X} — это {Y}.",
+      "graph_pattern": {"relation": "is_a", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 1.3,
+      "yes_no": true
+    },
+    {
+      "id": "yes_property",
+      "intent": "ответить_прямо",
+      "template": "Да, {X} — {Y}.",
+      "graph_pattern": {"relation": "has_property", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "adjective", "case": "nominative", "agree_with": "X"}
+      },
+      "weight": 1.3,
+      "yes_no": true
+    },
+    {
+      "id": "yes_part",
+      "intent": "ответить_прямо",
+      "template": "Да, {X} — часть {Y}.",
+      "graph_pattern": {"relation": "part_of", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "genitive"}
+      },
+      "weight": 1.3,
+      "yes_no": true
+    },
+    {
+      "id": "yes_verb",
+      "intent": "ответить_прямо",
+      "template": "Да, {X} {VERB_PRES} {PREP} {Y}.",
+      "graph_pattern": {"relation": "related_to", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "auto"}
+      },
+      "weight": 1.3,
+      "yes_no": true
+    },
+    {
+      "id": "yes_verb_noprep",
+      "intent": "ответить_прямо",
+      "template": "Да, {X} {VERB_PRES} {Y}.",
+      "graph_pattern": {"relation": "related_to", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "accusative"}
+      },
+      "weight": 1.3,
+      "yes_no": true
+    },
+    {
+      "id": "yes_related",
+      "intent": "ответить_прямо",
+      "template": "Да, это так: {X} и {Y} связаны.",
+      "graph_pattern": {"relation": "related_to", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 1.1,
+      "yes_no": true
+    },
+    {
+      "id": "hedge_is_a",
+      "intent": "ответить_с_оговоркой",
+      "template": "Если я правильно помню, {X} — это {Y}.",
+      "graph_pattern": {"relation": "is_a", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 1.0
+    },
+    {
+      "id": "hedge_property",
+      "intent": "ответить_с_оговоркой",
+      "template": "Кажется, {X} — {Y}.",
+      "graph_pattern": {"relation": "has_property", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "adjective", "case": "nominative", "agree_with": "X"}
+      },
+      "weight": 1.0
+    },
+    {
+      "id": "hedge_part",
+      "intent": "ответить_с_оговоркой",
+      "template": "Насколько я знаю, {X} — часть {Y}.",
+      "graph_pattern": {"relation": "part_of", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "genitive"}
+      },
+      "weight": 1.0
+    },
+    {
+      "id": "hedge_related",
+      "intent": "ответить_с_оговоркой",
+      "template": "Возможно, {X} и {Y} как-то связаны.",
+      "graph_pattern": {"relation": "related_to", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 1.0
+    },
+    {
+      "id": "hedge_generic",
+      "intent": "ответить_с_оговоркой",
+      "template": "Точно не уверен, но, кажется, у меня есть связь между {X} и {Y}.",
+      "graph_pattern": {"relation": "related_to", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "instrumental"},
+        "Y": {"pos": "noun", "case": "instrumental"}
+      },
+      "weight": 0.8
+    },
+    {
+      "id": "unknown_topic",
+      "intent": "признать_незнание",
+      "template": "Я пока не знаю, что такое {X}. Расскажешь?",
+      "graph_pattern": {},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 1.1
+    },
+    {
+      "id": "unknown_relation",
+      "intent": "признать_незнание",
+      "template": "В моей модели мира нет точной связи между {X} и {Y}.",
+      "graph_pattern": {},
+      "slots": {
+        "X": {"pos": "noun", "case": "instrumental"},
+        "Y": {"pos": "noun", "case": "instrumental"}
+      },
+      "weight": 1.0
+    },
+    {
+      "id": "unknown_yesno",
+      "intent": "признать_незнание",
+      "template": "У меня нет такой связи в графе. Могу ошибаться.",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 1.2
+    },
+    {
+      "id": "unknown_generic",
+      "intent": "признать_незнание",
+      "template": "Пока не могу ответить на это. Расскажи подробнее?",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 0.9
+    },
+    {
+      "id": "unknown_empty",
+      "intent": "признать_незнание",
+      "template": "Я ещё мало знаю. Расскажи мне что-нибудь?",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 0.5
+    },
+    {
+      "id": "clarify_generic",
+      "intent": "уточнить",
+      "template": "Не совсем понял. Уточни, о чём речь?",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 1.0
+    },
+    {
+      "id": "clarify_topic",
+      "intent": "уточнить",
+      "template": "Ты про {X}? Расскажи чуть подробнее.",
+      "graph_pattern": {},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 0.9
+    },
+    {
+      "id": "ack_is_a",
+      "intent": "запомнить_факт",
+      "template": "Запомнил: {X} — это {Y}.",
+      "graph_pattern": {"relation": "is_a", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 1.0
+    },
+    {
+      "id": "ack_property",
+      "intent": "запомнить_факт",
+      "template": "Понял: {X} — {Y}.",
+      "graph_pattern": {"relation": "has_property", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "adjective", "case": "nominative", "agree_with": "X"}
+      },
+      "weight": 1.0
+    },
+    {
+      "id": "ack_part",
+      "intent": "запомнить_факт",
+      "template": "Запомнил: {X} — часть {Y}.",
+      "graph_pattern": {"relation": "part_of", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "genitive"}
+      },
+      "weight": 1.0
+    },
+    {
+      "id": "ack_related",
+      "intent": "запомнить_факт",
+      "template": "Запомнил, что {X} {VERB_PRES} {PREP} {Y}.",
+      "graph_pattern": {"relation": "related_to", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "auto"}
+      },
+      "weight": 1.0
+    },
+    {
+      "id": "ack_verb_noprep",
+      "intent": "запомнить_факт",
+      "template": "Запомнил: {X} {VERB_PRES} {Y}.",
+      "graph_pattern": {"relation": "related_to", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "accusative"}
+      },
+      "weight": 1.0
+    },
+    {
+      "id": "ack_negation",
+      "intent": "запомнить_факт",
+      "template": "Понял, что это не так. Отрицания в граф не записываю.",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 0.6
+    },
+    {
+      "id": "ack_generic",
+      "intent": "запомнить_факт",
+      "template": "Понял. Записал.",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 0.4
+    },
+    {
+      "id": "refuse_action",
+      "intent": "отказать",
+      "template": "В v0.1 я не выполняю действия и не пишу код. Могу поговорить и запомнить факты.",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 1.0
+    }
+  ]
+}

@@ -89,6 +89,18 @@ class KnowledgeGraph:
         candidates = self._by_name.get((name.strip().casefold(), owner_id), [])
         return candidates[0] if candidates else None
 
+    def find_visible_node(
+        self,
+        name: str,
+        node_type: NodeType | None = None,
+        owner_id: uuid.UUID | None = None,
+    ) -> Node | None:
+        """Личный узел, иначе глобальный (ADR-014)."""
+        node = self.find_node(name, node_type, owner_id)
+        if node is None and owner_id is not None:
+            node = self.find_node(name, node_type, None)
+        return node
+
     def find_edge(
         self,
         source_id: uuid.UUID,

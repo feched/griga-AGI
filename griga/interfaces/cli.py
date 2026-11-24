@@ -1,4 +1,4 @@
-"""CLI v0.1. Пока это каркас: показывает версию и загруженные параметры."""
+"""CLI v0.1: статус проекта и интерактивный диалог."""
 
 from __future__ import annotations
 
@@ -23,13 +23,63 @@ def build_parser() -> argparse.ArgumentParser:
         help="путь к config.toml (по умолчанию — в корне проекта)",
     )
     parser.add_argument(
+        "--text",
+        default=None,
+        help="одна реплика для chat, без интерактивного цикла",
+    )
+    parser.add_argument(
         "command",
         nargs="?",
         choices=["chat", "status"],
         default="status",
-        help="chat — диалог (появится позже), status — состояние каркаса",
+        help="chat — диалог, status — состояние проекта",
     )
     return parser
+
+
+def _run_chat(cfg, once_text: str | None = None) -> int:
+    from griga.dialogue import Dialogue
+    from griga.env import load_dotenv
+    from griga.graph.graph import KnowledgeGraph
+    from griga.storage.postgres import PostgresStorage
+
+    load_dotenv()
+    try:
+        storage = PostgresStorage()
+        storage.init_schema()
+    except Exception as exc:  # noqa: BLE001 - CLI должен объяснить сбой
+        print(f"Не удалось подключиться к PostgreSQL: {exc}")
+        print("Проверь .env и запусти .\\.venv\\Scripts\\python.exe -m scripts.init_db")
+        return 1
+
+    with storage:
+        graph = KnowledgeGraph(storage)
+        dialogue = Dialogue(graph, cfg)
+
+        if once_text:
+            turn = dialogue.turn(once_text)
+            print(f"Гриша: {turn.response}")
+            return 0
+
+        print("Гриша v0.1. Пиши факты или вопросы. Выход: «выход».")
+        while True:
+            try:
+                raw = input("Вы: ")
+            except (EOFError, KeyboardInterrupt):
+                print()
+                break
+
+            text = raw.strip()
+            if not text:
+                continue
+            if text.lower() in {"выход", "exit", "quit", "пока"}:
+                print("Гриша: До встречи.")
+                break
+
+            turn = dialogue.turn(text)
+            print(f"Гриша: {turn.response}")
+
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -42,8 +92,7 @@ def main(argv: list[str] | None = None) -> int:
     cfg = load_config(args.config)
 
     if args.command == "chat":
-        print("Диалог ещё не реализован: следующий этап — M1 (граф и хранилище).")
-        return 2
+        return _run_chat(cfg, args.text)
 
     print(f"Griga AGI v0.1 ({__version__}) — каркас проекта.")
     print(f"storage: {cfg.storage.backend} ({cfg.storage.database_url_env})")
@@ -57,6 +106,12 @@ def main(argv: list[str] | None = None) -> int:
         f"eta={cfg.learning.eta}, supervised_delta={cfg.learning.supervised_delta}, "
         f"forgetting={cfg.learning.forgetting_factor}"
     )
+    print(
+        "perception: "
+        f"udpipe={'on' if cfg.perception.use_syntax else 'off'}, "
+        f"model={cfg.perception.udpipe_model}"
+    )
+    print(f"generation: max_attempts={cfg.generation.max_attempts}")
     return 0
 
 

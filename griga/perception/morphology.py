@@ -21,6 +21,58 @@ _FUNCTION_POS = frozenset(
     {"PREP", "CONJ", "PRCL", "INTJ", "NPRO", "NUMR", "PRED", "NPRO"}
 )
 
+_CASE_GRAMMEMES = {
+    "nominative": "nomn",
+    "genitive": "gent",
+    "dative": "datv",
+    "accusative": "accs",
+    "instrumental": "ablt",
+    "prepositional": "loct",
+}
+_NUMBER_GRAMMEMES = {"singular": "sing", "plural": "plur"}
+_GENDER_GRAMMEMES = {
+    "masculine": "masc",
+    "feminine": "femn",
+    "neuter": "neut",
+    # pymorphy-значения тоже принимаем: Morphology.gender() возвращает их.
+    "masc": "masc",
+    "femn": "femn",
+    "neut": "neut",
+}
+
+# Предлог → падеж, которого он требует. Нужен для глагольных рёбер
+# «расти_на» → «на газоне», «состоять_из» → «из кирпича».
+_PREPOSITION_CASE = {
+    "на": "prepositional",
+    "в": "prepositional",
+    "во": "prepositional",
+    "о": "prepositional",
+    "об": "prepositional",
+    "при": "prepositional",
+    "из": "genitive",
+    "от": "genitive",
+    "у": "genitive",
+    "без": "genitive",
+    "для": "genitive",
+    "до": "genitive",
+    "с": "instrumental",
+    "со": "instrumental",
+    "над": "instrumental",
+    "под": "instrumental",
+    "за": "accusative",
+    "про": "accusative",
+    "через": "accusative",
+    "к": "dative",
+    "ко": "dative",
+    "по": "dative",
+}
+
+
+def case_for_preposition(preposition: str | None) -> str:
+    if not preposition:
+        return "accusative"
+    return _PREPOSITION_CASE.get(normalize_word(preposition), "accusative")
+
 
 def normalize_word(word: str) -> str:
     """Нижний регистр, ё → е, обрезка. Единая форма для ключей графа."""
@@ -84,3 +136,56 @@ class Morphology:
 
     def number(self, word: str) -> str | None:
         return self.feature(word, "number")
+
+    def gender(self, word: str) -> str | None:
+        return self.feature(word, "gender")
+
+    def inflect_noun(
+        self,
+        word: str,
+        case: str = "nominative",
+        number: str = "singular",
+    ) -> str:
+        """Склоняет существительное; при неудаче возвращает исходную лемму."""
+        parse = self.parse(word)
+        grammemes = {"NOUN"}
+        if case in _CASE_GRAMMEMES:
+            grammemes.add(_CASE_GRAMMEMES[case])
+        if number in _NUMBER_GRAMMEMES:
+            grammemes.add(_NUMBER_GRAMMEMES[number])
+        result = parse.inflect(grammemes)
+        return result.word if result else normalize_word(word)
+
+    def inflect_adjective(
+        self,
+        word: str,
+        case: str = "nominative",
+        gender: str | None = None,
+        number: str = "singular",
+    ) -> str:
+        """Склоняет прилагательное и согласует его по роду."""
+        parse = self.parse(word)
+        grammemes = {"ADJF"}
+        if case in _CASE_GRAMMEMES:
+            grammemes.add(_CASE_GRAMMEMES[case])
+        if number in _NUMBER_GRAMMEMES:
+            grammemes.add(_NUMBER_GRAMMEMES[number])
+        if gender in _GENDER_GRAMMEMES:
+            grammemes.add(_GENDER_GRAMMEMES[gender])
+        result = parse.inflect(grammemes)
+        return result.word if result else normalize_word(word)
+
+    def conjugate_present(
+        self,
+        verb: str,
+        person: str = "3per",
+        number: str = "singular",
+    ) -> str:
+        """«расти» → «растёт», «любить» → «любит» (настоящее время)."""
+        parse = self.parse(verb)
+        grammemes = {"VERB", person}
+        if number in _NUMBER_GRAMMEMES:
+            grammemes.add(_NUMBER_GRAMMEMES[number])
+        result = parse.inflect(grammemes)
+        return result.word if result else normalize_word(verb)
+
