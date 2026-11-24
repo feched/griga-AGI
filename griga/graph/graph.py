@@ -168,6 +168,46 @@ class KnowledgeGraph:
         self._index_edge(edge)
         return edge
 
+    def update_edge_weight(
+        self,
+        edge: Edge | uuid.UUID | str,
+        weight: float,
+    ) -> Edge:
+        """Меняет вес ребра с записью в БД (ADR-005, §5.1).
+
+        Сначала сохраняем новое значение, и только после успешной записи
+        обновляем память. Вес зажимается в допустимый схемой диапазон.
+        """
+        target = self._resolve_edge(edge)
+        new_weight = round(
+            min(Edge.MAX_WEIGHT, max(Edge.MIN_WEIGHT, float(weight))), 6
+        )
+        if new_weight == target.weight:
+            return target
+
+        previous = target.weight
+        target.weight = new_weight
+        try:
+            self.storage.save_edge(target)
+        except Exception:
+            target.weight = previous
+            raise
+        return target
+
+    def _resolve_edge(self, edge: Edge | uuid.UUID | str) -> Edge:
+        if isinstance(edge, Edge):
+            found = self.edges.get(edge.id)
+            if found is None:
+                raise KeyError(f"Edge {edge.id} is not in the graph")
+            return found
+        edge_uuid = (
+            edge if isinstance(edge, uuid.UUID) else uuid.UUID(str(edge))
+        )
+        found = self.edges.get(edge_uuid)
+        if found is None:
+            raise KeyError(f"Edge {edge_uuid} is not in the graph")
+        return found
+
     # --- introspection -------------------------------------------------
 
     @property

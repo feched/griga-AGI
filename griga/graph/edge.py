@@ -5,13 +5,16 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from griga.graph.relations import RelationType
 
 
 @dataclass
 class Edge:
+    MIN_WEIGHT: ClassVar[float] = 0.05
+    MAX_WEIGHT: ClassVar[float] = 1.0
+
     source_id: uuid.UUID
     target_id: uuid.UUID
     relation_type: RelationType
