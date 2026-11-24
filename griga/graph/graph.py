@@ -169,6 +169,13 @@ class KnowledgeGraph:
 
         node.id = self.storage.save_node(node)
         self._index_node(node)
+        self._audit(
+            "node",
+            node.id,
+            "create",
+            after=node.to_row(),
+            source=node.metadata.get("source"),
+        )
         return node
 
     def add_edge(self, edge: Edge) -> Edge:
@@ -195,6 +202,13 @@ class KnowledgeGraph:
 
         edge.id = self.storage.save_edge(edge)
         self._index_edge(edge)
+        self._audit(
+            "edge",
+            edge.id,
+            "create",
+            after=edge.to_row(),
+            source=edge.metadata.get("source"),
+        )
         return edge
 
     def update_edge_weight(
@@ -221,6 +235,14 @@ class KnowledgeGraph:
         except Exception:
             target.weight = previous
             raise
+        self._audit(
+            "edge",
+            target.id,
+            "update_weight",
+            before={"weight": previous},
+            after={"weight": target.weight},
+            source=target.metadata.get("source"),
+        )
         return target
 
     def _resolve_edge(self, edge: Edge | uuid.UUID | str) -> Edge:
@@ -236,6 +258,43 @@ class KnowledgeGraph:
         if found is None:
             raise KeyError(f"Edge {edge_uuid} is not in the graph")
         return found
+
+    # --- audit ---------------------------------------------------------
+
+    def _audit(
+        self,
+        entity_type: str,
+        entity_id: uuid.UUID,
+        action: str,
+        *,
+        before: dict | None = None,
+        after: dict | None = None,
+        source: str | None = None,
+    ) -> None:
+        """Пишет событие в audit-log, если хранилище это умеет."""
+        logger = getattr(self.storage, "log_event", None)
+        if logger is None:
+            return
+        logger(
+            entity_type,
+            entity_id,
+            action,
+            before=self._jsonable(before),
+            after=self._jsonable(after),
+            source=source,
+        )
+
+    @classmethod
+    def _jsonable(cls, value):
+        if isinstance(value, dict):
+            return {key: cls._jsonable(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [cls._jsonable(item) for item in value]
+        if isinstance(value, uuid.UUID):
+            return str(value)
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        return value
 
     # --- introspection -------------------------------------------------
 

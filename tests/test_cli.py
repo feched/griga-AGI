@@ -52,3 +52,12 @@ def test_user_option_is_available_for_chat_and_visualize():
 
     users = build_parser().parse_args(["users"])
     assert users.command == "users"
+
+
+def test_history_command_and_limit_option_are_available():
+    args = build_parser().parse_args(["history", "--limit", "5"])
+    assert args.command == "history"
+    assert args.limit == 5
+
+    default = build_parser().parse_args(["history"])
+    assert default.limit == 20

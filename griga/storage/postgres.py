@@ -186,12 +186,65 @@ class PostgresStorage:
             cur.execute(sql, params)
             return [Edge.from_row(dict(row)) for row in cur.fetchall()]
 
+    # --- audit / history ----------------------------------------------
+
+    def log_event(
+        self,
+        entity_type: str,
+        entity_id: uuid.UUID | str,
+        action: str,
+        *,
+        before: dict[str, Any] | None = None,
+        after: dict[str, Any] | None = None,
+        source: str | None = None,
+    ) -> int:
+        entity_uuid = (
+            entity_id
+            if isinstance(entity_id, uuid.UUID)
+            else uuid.UUID(str(entity_id))
+        )
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO graph_events (
+                    entity_type, entity_id, action, before, after, source
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    entity_type,
+                    entity_uuid,
+                    action,
+                    Json(before) if before is not None else None,
+                    Json(after) if after is not None else None,
+                    source,
+                ),
+            )
+            return int(cur.fetchone()["id"])
+
+    def load_events(self, limit: int = 100) -> list[dict[str, Any]]:
+        if limit < 1:
+            raise ValueError("limit must be >= 1")
+        with self._cursor() as cur:
+            cur.execute(
+                """
+                SELECT * FROM graph_events
+                ORDER BY id DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
     # --- maintenance ---------------------------------------------------
 
     def truncate_all(self) -> None:
         """Очищает граф. Используется тестами и /reset в будущем."""
         with self._cursor() as cur:
-            cur.execute("TRUNCATE TABLE edges, nodes, users CASCADE")
+            cur.execute(
+                "TRUNCATE TABLE graph_events, edges, nodes, users CASCADE"
+            )
 
     def close(self) -> None:
         if self.conn is not None:

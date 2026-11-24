@@ -40,6 +40,10 @@ class TurnResult:
     learned: tuple[EdgeChange, ...] = ()
     forgotten: tuple[EdgeChange, ...] = ()
 
+    @property
+    def conflicts(self) -> int:
+        return self.applied.conflicting_edges
+
 
 class Dialogue:
     """Состояние одного диалога поверх общего графа."""

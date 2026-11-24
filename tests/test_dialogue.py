@@ -2,6 +2,7 @@ import pytest
 
 from griga.dialogue import Dialogue
 from griga.graph.graph import KnowledgeGraph
+from griga.graph.relations import RelationType
 
 
 class MemoryStorage:
@@ -110,3 +111,21 @@ def test_dialogue_does_not_repeat_identical_answer(dialogue):
     second = dialogue.turn("Что такое трава?")
 
     assert second.response != first.response
+
+
+def test_dialogue_reports_conflicting_fact(dialogue):
+    first = dialogue.turn("Трава — это растение.")
+    second = dialogue.turn("Трава — это животное.")
+
+    assert first.conflicts == 0
+    assert second.conflicts == 1
+
+    grass = dialogue.graph.find_node("трава")
+    plant = dialogue.graph.find_node("растение")
+    animal = dialogue.graph.find_node("животное")
+
+    old = dialogue.graph.find_edge(grass.id, plant.id, RelationType.IS_A)
+    new = dialogue.graph.find_edge(grass.id, animal.id, RelationType.IS_A)
+
+    assert new.weight < old.weight
+    assert new.metadata["validation"] == "conflict"

@@ -106,3 +106,81 @@ def test_owner_isolation_on_load(storage):
     visible_edges = storage.load_all_edges(owner_id=user_id)
     assert len(visible_edges) == 1
     assert visible_edges[0].owner_id == user_id
+
+
+def test_audit_log_records_creates(storage):
+    graph = KnowledgeGraph(storage)
+
+    grass = graph.add_node(Node(name="Трава"))
+    plant = graph.add_node(Node(name="Растение"))
+    edge = graph.add_edge(
+        Edge(
+            source_id=grass.id,
+            target_id=plant.id,
+            relation_type=RelationType.IS_A,
+            weight=0.7,
+        )
+    )
+
+    events = storage.load_events()
+
+    assert [event["action"] for event in events] == [
+        "create",
+        "create",
+        "create",
+    ]
+    assert events[0]["entity_type"] == "edge"
+    assert events[0]["entity_id"] == edge.id
+    assert events[0]["after"]["relation_type"] == RelationType.IS_A.value
+    assert events[1]["entity_id"] == plant.id
+    assert events[2]["entity_id"] == grass.id
+
+
+def test_audit_log_records_weight_updates(storage):
+    graph = KnowledgeGraph(storage)
+    grass = graph.add_node(Node(name="Трава"))
+    plant = graph.add_node(Node(name="Растение"))
+    edge = graph.add_edge(
+        Edge(
+            source_id=grass.id,
+            target_id=plant.id,
+            relation_type=RelationType.IS_A,
+            weight=0.5,
+        )
+    )
+
+    graph.update_edge_weight(edge, 0.8)
+
+    events = storage.load_events()
+    update = events[0]
+
+    assert update["action"] == "update_weight"
+    assert update["before"]["weight"] == pytest.approx(0.5)
+    assert update["after"]["weight"] == pytest.approx(0.8)
+
+
+def test_audit_log_keeps_source_text(storage):
+    from griga.perception import PerceptionParser, apply_parse
+
+    graph = KnowledgeGraph(storage)
+    apply_parse(PerceptionParser().parse("Трава — это растение."), graph)
+
+    events = [
+        event for event in storage.load_events() if event["action"] == "create"
+    ]
+
+    edge_event = next(
+        event for event in events if event["entity_type"] == "edge"
+    )
+    assert edge_event["source"] == "Трава — это растение."
+
+
+def test_audit_log_is_cleared_with_truncate(storage):
+    graph = KnowledgeGraph(storage)
+    graph.add_node(Node(name="Трава"))
+    assert storage.load_events()
+
+    storage.truncate_all()
+
+    assert storage.load_events() == []
+

@@ -53,3 +53,20 @@ CREATE INDEX IF NOT EXISTS idx_edges_source ON edges (source_id);
 CREATE INDEX IF NOT EXISTS idx_edges_target ON edges (target_id);
 CREATE INDEX IF NOT EXISTS idx_edges_owner ON edges (owner_id);
 CREATE INDEX IF NOT EXISTS idx_edges_relation ON edges (relation_type);
+
+-- Аудит и версионирование изменений графа (ARCHITECTURE §5.3).
+CREATE TABLE IF NOT EXISTS graph_events (
+    id BIGSERIAL PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    entity_id UUID NOT NULL,
+    action TEXT NOT NULL,
+    before JSONB,
+    after JSONB,
+    source TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_graph_events_entity
+    ON graph_events (entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_graph_events_created
+    ON graph_events (created_at DESC);

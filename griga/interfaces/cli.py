@@ -58,13 +58,19 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="сколько событий истории показать (по умолчанию 20)",
+    )
+    parser.add_argument(
         "command",
         nargs="?",
-        choices=["chat", "status", "visualize", "users"],
+        choices=["chat", "status", "visualize", "users", "history"],
         default="status",
         help=(
             "chat — диалог, visualize — граф в браузере, "
-            "users — список пользователей, status — состояние"
+            "users — пользователи, history — аудит изменений, status — состояние"
         ),
     )
     return parser
@@ -103,7 +109,7 @@ def _run_chat(
 
         if once_text:
             turn = dialogue.turn(once_text)
-            print(f"Гриша: {turn.response}")
+            _report_turn(turn)
             return 0
 
         print(f"Пользователь: {user.name}")
@@ -123,9 +129,18 @@ def _run_chat(
                 break
 
             turn = dialogue.turn(text)
-            print(f"Гриша: {turn.response}")
+            _report_turn(turn)
 
     return 0
+
+
+def _report_turn(turn) -> None:
+    print(f"Гриша: {turn.response}")
+    if turn.conflicts:
+        print(
+            "  (заметка: факт противоречит уже известному — "
+            "сохранён с низкой уверенностью)"
+        )
 
 
 def _run_visualize(cfg, args) -> int:
@@ -184,6 +199,35 @@ def _run_users(cfg) -> int:
     return 0
 
 
+def _run_history(cfg, limit: int = 20) -> int:
+    from griga.env import load_dotenv
+    from griga.storage.postgres import PostgresStorage
+
+    load_dotenv()
+    try:
+        storage = PostgresStorage()
+        storage.init_schema()
+    except Exception as exc:  # noqa: BLE001 - CLI должен объяснить сбой
+        print(f"Не удалось подключиться к PostgreSQL: {exc}")
+        print("Проверь .env и запусти .\\.venv\\Scripts\\python.exe -m scripts.init_db")
+        return 1
+
+    with storage:
+        events = storage.load_events(max(1, limit))
+        if not events:
+            print("История изменений пуста.")
+            return 0
+        for event in events:
+            source = event.get("source") or ""
+            print(
+                f"{event['created_at']:%Y-%m-%d %H:%M:%S}  "
+                f"{event['action']:<14} {event['entity_type']:<5} "
+                f"{event['entity_id']}  {source}"
+            )
+
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
@@ -201,6 +245,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "users":
         return _run_users(cfg)
+
+    if args.command == "history":
+        return _run_history(cfg, args.limit)
 
     print(f"Griga AGI v0.1 ({__version__}) — каркас проекта.")
     print(f"storage: {cfg.storage.backend} ({cfg.storage.database_url_env})")

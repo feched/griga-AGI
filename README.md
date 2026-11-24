@@ -4,7 +4,7 @@
 активации + обучение по Хеббу + генерация через намерения и конструкции.
 Без LLM в ядре.
 
-**Статус:** M7 — личные подграфы и изоляция пользователей (ADR-014).
+**Статус:** M8 — валидация графа и аудит изменений (ADR-008).
 
 ## Документы
 
@@ -44,7 +44,7 @@ python -m griga --version
 # 2. Скопировать .env.example в .env и указать свой пароль
 Copy-Item .env.example .env
 
-# 3. Создать таблицы users / nodes / edges
+# 3. Создать таблицы users / nodes / edges / graph_events
 .\.venv\Scripts\python.exe -m scripts.init_db
 
 # 4. Тесты (используют griga_v01_test и очищают её)
@@ -177,12 +177,39 @@ Copy-Item .env.example .env
 принимают `--user`; имя по умолчанию берётся из `GRIGA_USER_NAME`
 (иначе «пользователь»).
 
+### Валидация и аудит (ADR-008)
+
+```powershell
+# История изменений графа из PostgreSQL (по умолчанию 20 событий)
+.\.venv\Scripts\python.exe -m griga history
+.\.venv\Scripts\python.exe -m griga history --limit 50
+
+# Демо: противоречащий факт и журнал событий (в памяти)
+.\.venv\Scripts\python.exe -m scripts.demo_validation
+```
+
+Валидация защищает граф от «взрыва» и противоречий:
+
+- парсер создаёт только базовые отношения (`это`, `часть`, `свойство`,
+  `связано_с`) и глагольные связи; новых типов на лету не появляется;
+- **функциональные** отношения (`is_a`, `part_of`) проверяются
+  `GraphValidator`: если у концепта уже есть `is_a`, противоречащий факт
+  не затирает старый, а пишется с `weight=0.15` и метаданными
+  `validation=conflict`, `conflicts_with`, `conflict_reason`;
+- Хебб по-прежнему меняет только веса существующих рёбер.
+
+Каждая запись узла, ребра и изменение веса пишется в `graph_events`
+(`entity_type`, `entity_id`, `action`, `before`, `after`, `source`).
+`griga history` показывает журнал, а снимок для визуализатора и ответы
+генератора читают уже проверенный граф.
+
 ## Структура
 
 ```text
 griga/
   config.py        загрузка config.toml (параметры D/T/eta/depth — не в коде)
   graph/           узлы, рёбра, онтология
+  validation/      проверка противоречий перед записью (ADR-008)
   storage/         PostgreSQL, миграции, audit/versioning
   perception/      текст -> nodes / statements / markers
   thinking/        активация и рабочая память
