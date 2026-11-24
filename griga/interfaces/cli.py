@@ -66,11 +66,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "command",
         nargs="?",
-        choices=["chat", "status", "visualize", "users", "history"],
+        choices=["chat", "status", "visualize", "users", "history", "safety"],
         default="status",
         help=(
             "chat — диалог, visualize — граф в браузере, "
-            "users — пользователи, history — аудит изменений, status — состояние"
+            "users — пользователи, history — аудит изменений, "
+            "safety — политика безопасности, status — состояние"
         ),
     )
     return parser
@@ -228,6 +229,26 @@ def _run_history(cfg, limit: int = 20) -> int:
     return 0
 
 
+def _run_safety(cfg) -> int:
+    from griga.shell import ActionClass
+
+    safety = cfg.safety
+    print("Safety shell v0.1 (ADR-010)")
+    print("  safe:      чтение графа, генерация ответа")
+    print("  guarded:   запись факта, обновление веса (аудируется)")
+    print("  approval:  удаление, отправка сообщений (нет approver — запрещено)")
+    print("  forbidden: код, веб, файлы, самоизменение (ADR-015)")
+    print(
+        "  пороги: "
+        f"nodes<={safety.max_new_nodes_per_turn}, "
+        f"edges<={safety.max_new_edges_per_turn}, "
+        f"conflicts<={safety.max_conflicts_per_turn}, "
+        f"forbidden_attempts<{safety.max_forbidden_attempts}"
+    )
+    print(f"  классы действий: {', '.join(item.value for item in ActionClass)}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
@@ -249,6 +270,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "history":
         return _run_history(cfg, args.limit)
 
+    if args.command == "safety":
+        return _run_safety(cfg)
+
     print(f"Griga AGI v0.1 ({__version__}) — каркас проекта.")
     print(f"storage: {cfg.storage.backend} ({cfg.storage.database_url_env})")
     print(
@@ -267,6 +291,12 @@ def main(argv: list[str] | None = None) -> int:
         f"model={cfg.perception.udpipe_model}"
     )
     print(f"generation: max_attempts={cfg.generation.max_attempts}")
+    print(
+        "safety: "
+        f"nodes<={cfg.safety.max_new_nodes_per_turn}, "
+        f"edges<={cfg.safety.max_new_edges_per_turn}, "
+        f"conflicts<={cfg.safety.max_conflicts_per_turn}"
+    )
     return 0
 
 

@@ -282,7 +282,7 @@ Eval-гейт (см. §7): новый навык публикуется, тол�
 | ADR-006 | Протокол модулей | accepted | `adr/0006-module-protocol.md` |
 | ADR-008 | Валидация и eval-гейт | accepted | `adr/0008-validation.md` |
 | ADR-009 | Банк намерений/конструкций | accepted | `adr/0009-constructions.md` |
-| ADR-010 | Safety-пороги | TBD | — |
+| ADR-010 | Safety-пороги, approval-gate | accepted | `adr/0010-safety-shell.md` |
 | ADR-011 | Лицензия | TBD | — |
 | ADR-012 | Один агент с ролями | TBD (решено: один) | — |
 | ADR-013 | Модель мира: причинность и заземление | TBD | — |

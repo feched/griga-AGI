@@ -61,3 +61,12 @@ def test_history_command_and_limit_option_are_available():
 
     default = build_parser().parse_args(["history"])
     assert default.limit == 20
+
+
+def test_safety_command_shows_policy(capsys):
+    assert main(["safety"]) == 0
+    out = capsys.readouterr().out
+    assert "Safety shell v0.1" in out
+    assert "forbidden" in out
+    assert "nodes<=40" in out
+    assert "edges<=20" in out

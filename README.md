@@ -4,7 +4,7 @@
 активации + обучение по Хеббу + генерация через намерения и конструкции.
 Без LLM в ядре.
 
-**Статус:** M8 — валидация графа и аудит изменений (ADR-008).
+**Статус:** M9 — safety shell, approval-gate и пороги аномалий (ADR-010).
 
 ## Документы
 
@@ -202,6 +202,32 @@ Copy-Item .env.example .env
 (`entity_type`, `entity_id`, `action`, `before`, `after`, `source`).
 `griga history` показывает журнал, а снимок для визуализатора и ответы
 генератора читают уже проверенный граф.
+
+### Safety shell (ADR-010)
+
+```powershell
+# Политика и пороги без подключения к БД
+.\.venv\Scripts\python.exe -m griga safety
+
+# Демо: классы действий, approval-gate, аномалии и audit-log
+.\.venv\Scripts\python.exe -m scripts.demo_safety
+```
+
+Внешний слой проверяет действия снаружи и не даёт агенту подтверждать
+самого себя:
+
+- `safe` — чтение графа, активация, генерация ответа: разрешено;
+- `guarded` — запись факта, обновление веса: разрешено и аудируется;
+- `approval` — удаление, отправка сообщений: в CLI approver нет, поэтому
+  запрещено;
+- `forbidden` — код, веб-поиск, файлы, самоизменение: запрещено всегда.
+
+После `max_forbidden_attempts=3` запрещённых попыток shell блокируется до
+перезапуска. Пороги одного хода (`max_new_nodes_per_turn=40`,
+`max_new_edges_per_turn=20`, `max_conflicts_per_turn=1`) живут в
+`config.toml`; превышение попадает в `TurnResult.anomalies` и в audit-log
+как `anomaly`. Каждое решение `enforce` пишется в `graph_events`
+(`entity_type = "safety"`, `source = "safety_shell"`).
 
 ## Структура
 

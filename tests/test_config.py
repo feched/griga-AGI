@@ -29,6 +29,11 @@ def test_default_config_matches_adr_003():
     assert cfg.perception.use_syntax is True
     assert cfg.perception.udpipe_model.endswith(".udpipe")
 
+    assert cfg.safety.max_new_nodes_per_turn == 40
+    assert cfg.safety.max_new_edges_per_turn == 20
+    assert cfg.safety.max_conflicts_per_turn == 1
+    assert cfg.safety.max_forbidden_attempts == 3
+
 
 def test_non_postgres_backend_is_rejected(tmp_path):
     path = tmp_path / "config.toml"

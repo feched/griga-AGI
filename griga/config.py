@@ -63,6 +63,16 @@ class PerceptionConfig:
 
 
 @dataclass(frozen=True)
+class SafetyConfig:
+    """ADR-010: пороги аномалий и предел запрещённых попыток."""
+
+    max_new_nodes_per_turn: int = 40
+    max_new_edges_per_turn: int = 20
+    max_conflicts_per_turn: int = 1
+    max_forbidden_attempts: int = 3
+
+
+@dataclass(frozen=True)
 class Config:
     activation: ActivationConfig = ActivationConfig()
     learning: LearningConfig = LearningConfig()
@@ -70,6 +80,7 @@ class Config:
     storage: StorageConfig = StorageConfig()
     memory: MemoryConfig = MemoryConfig()
     perception: PerceptionConfig = PerceptionConfig()
+    safety: SafetyConfig = SafetyConfig()
 
 
 def _section(data: dict, name: str) -> dict:
@@ -105,6 +116,7 @@ def load_config(path: str | Path | None = None) -> Config:
     storage = _section(data, "storage")
     memory = _section(data, "memory")
     perception = _section(data, "perception")
+    safety = _section(data, "safety")
 
     cfg = Config(
         activation=ActivationConfig(
@@ -142,6 +154,20 @@ def load_config(path: str | Path | None = None) -> Config:
                 )
             ),
         ),
+        safety=SafetyConfig(
+            max_new_nodes_per_turn=_integer(
+                safety, "max_new_nodes_per_turn", 40
+            ),
+            max_new_edges_per_turn=_integer(
+                safety, "max_new_edges_per_turn", 20
+            ),
+            max_conflicts_per_turn=_integer(
+                safety, "max_conflicts_per_turn", 1
+            ),
+            max_forbidden_attempts=_integer(
+                safety, "max_forbidden_attempts", 3
+            ),
+        ),
     )
     _validate(cfg)
     return cfg
@@ -164,3 +190,11 @@ def _validate(cfg: Config) -> None:
         raise ValueError("memory.top_k must be >= 1")
     if cfg.storage.backend != "postgres":
         raise ValueError("v0.1 supports only PostgreSQL (ADR-015)")
+    if cfg.safety.max_new_nodes_per_turn < 1:
+        raise ValueError("safety.max_new_nodes_per_turn must be >= 1")
+    if cfg.safety.max_new_edges_per_turn < 1:
+        raise ValueError("safety.max_new_edges_per_turn must be >= 1")
+    if cfg.safety.max_conflicts_per_turn < 0:
+        raise ValueError("safety.max_conflicts_per_turn must be >= 0")
+    if cfg.safety.max_forbidden_attempts < 1:
+        raise ValueError("safety.max_forbidden_attempts must be >= 1")

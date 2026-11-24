@@ -19,6 +19,8 @@ from griga.graph.graph import KnowledgeGraph
 from griga.learning import EdgeChange, Forgetting, HebbLearner
 from griga.perception import AppliedParse, PerceptionParser, apply_parse
 from griga.perception.models import ParseResult
+from griga.shell.actions import Action, WRITE_FACT
+from griga.shell.shell import Anomaly, SafetyShell
 from griga.speech.generator import (
     GeneratedResponse,
     Generator,
@@ -39,6 +41,7 @@ class TurnResult:
     attempts: int = 1
     learned: tuple[EdgeChange, ...] = ()
     forgotten: tuple[EdgeChange, ...] = ()
+    anomalies: tuple[Anomaly, ...] = ()
 
     @property
     def conflicts(self) -> int:
@@ -57,6 +60,7 @@ class Dialogue:
         parser: PerceptionParser | None = None,
         generator: Generator | None = None,
         learning: bool = True,
+        safety: SafetyShell | None = None,
     ) -> None:
         self.graph = graph
         self.config = config or load_config()
@@ -67,6 +71,10 @@ class Dialogue:
         self.learning_enabled = learning
         self.hebb = HebbLearner(self.graph, self.config)
         self.forgetting = Forgetting(self.graph, self.config)
+        self.safety = safety or SafetyShell(
+            self.config.safety,
+            storage=getattr(self.graph, "storage", None),
+        )
 
         self.turn_index = 0
         self.last_response: str | None = None
@@ -77,6 +85,28 @@ class Dialogue:
         parse = self.parser.parse(text)
         applied = apply_parse(
             parse, self.graph, owner_id=self.owner_id
+        )
+
+        anomalies: tuple[Anomaly, ...] = ()
+        if applied.edge_count or applied.node_count:
+            self.safety.enforce(
+                Action(
+                    "write_fact",
+                    WRITE_FACT,
+                    payload={
+                        "nodes": applied.node_count,
+                        "edges": applied.edge_count,
+                        "conflicts": applied.conflicting_edges,
+                        "text": text,
+                    },
+                    actor="user",
+                )
+            )
+        anomalies = self.safety.observe_turn(
+            new_nodes=applied.node_count,
+            new_edges=applied.edge_count,
+            conflicts=applied.conflicting_edges,
+            turn_index=self.turn_index,
         )
 
         memory = self.spreader.activate(
@@ -117,6 +147,7 @@ class Dialogue:
             attempts=generated.attempts,
             learned=learned,
             forgotten=forgotten,
+            anomalies=anomalies,
         )
 
     def _seed_nodes(self, parse: ParseResult):

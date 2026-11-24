@@ -43,3 +43,11 @@ working_ttl_turns = 20
 use_syntax = true
 # Путь относительно корня проекта. Если файла нет — включается эвристический fallback.
 udpipe_model = "data/models/russian-syntagrus-ud-2.5-191206.udpipe"
+
+[safety]
+# ADR-010: пороги аномалий одного хода. Превышение пишется в audit-log.
+max_new_nodes_per_turn = 40
+max_new_edges_per_turn = 20
+max_conflicts_per_turn = 1
+# После стольких запрещённых действий shell закрывается до перезапуска.
+max_forbidden_attempts = 3
