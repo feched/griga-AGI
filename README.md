@@ -4,7 +4,7 @@
 активации + обучение по Хеббу + генерация через намерения и конструкции.
 Без LLM в ядре.
 
-**Статус:** M9 — safety shell, approval-gate и пороги аномалий (ADR-010).
+**Статус:** M10 — eval-набор v0.1 (20 вопросов по загруженному тексту).
 
 ## Документы
 
@@ -229,6 +229,22 @@ Copy-Item .env.example .env
 как `anomaly`. Каждое решение `enforce` пишется в `graph_events`
 (`entity_type = "safety"`, `source = "safety_shell"`).
 
+### Eval (ADR-015)
+
+```powershell
+# 20 базовых вопросов по загруженному тексту; 0 — все прошли
+.\.venv\Scripts\python.exe -m scripts.run_eval
+
+# Полный отчёт в JSON
+.\.venv\Scripts\python.exe -m scripts.run_eval --json
+```
+
+Набор лежит в [`eval/`](eval/): `corpus.txt` (18 фактов) и
+`questions.json` (20 вопросов). Раннер пишет корпус в память, задаёт
+вопросы и проверяет не только ожидаемые слова (с учётом склонения), но и
+инварианты: намерение, отсутствие fallback, отсутствие дословного повтора
+и `activation.clamp`. Прогон не требует PostgreSQL.
+
 ## Структура
 
 ```text
@@ -243,7 +259,8 @@ griga/
   speech/          намерения, конструкции, генератор, мониторинг
   visualization/   снимок графа, локальный HTTP-сервер и D3-страница
   memory/          общий граф + личные подграфы, owner_id
-  shell/           внешний safety shell (approval, audit, validator)
+  shell/           внешний safety shell (approval, audit, пороги)
+  evaluation/      eval-раннер: корпус → вопросы → проверки
   interfaces/      CLI (позже — Telegram/VK/Discord/web)
 docs/              спецификация и ADR
 eval/              eval-наборы v0.1
