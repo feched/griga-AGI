@@ -41,6 +41,10 @@ reports/
 *.swp
 *~
 
+# Obsidian (локальные заметки)
+.obsidian/
+docs/.obsidian/
+
 # OS
 .DS_Store
 Thumbs.db
