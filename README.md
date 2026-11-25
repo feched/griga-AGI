@@ -231,6 +231,21 @@ Copy-Item .env.example .env
 как `anomaly`. Каждое решение `enforce` пишется в `graph_events`
 (`entity_type = "safety"`, `source = "safety_shell"`).
 
+### Agent CLI (interfaces/)
+
+```powershell
+# Интерактивная оболочка в стиле агентских CLI
+.\.venv\Scripts\python.exe -m griga.interfaces.agent
+
+# Или ярлык «Griga CLI» на рабочем столе (см. interfaces/create-shortcuts.ps1)
+```
+
+Слэш-команды: `/help`, `/status`, `/history`, `/graph`, `/export`,
+`/user`, `/verbose`, `/clear`, `/quit`. После каждого ответа — компактная
+трасса: намерение, конструкция, число попыток. Граф по-прежнему живёт в
+PostgreSQL; `/export` сохраняет снимок в `interfaces/graph_snapshot.json`
+(файл не коммитится). Подробнее — [`interfaces/README.md`](interfaces/README.md).
+
 ### Eval (ADR-015)
 
 ```powershell
@@ -264,7 +279,9 @@ griga/
   shell/           внешний safety shell (approval, audit, пороги)
   evaluation/      eval-раннер: корпус → вопросы → проверки
   interfaces/      CLI (позже — Telegram/VK/Discord/web)
-docs/              спецификация и ADR
+interfaces/        agent-style CLI, лаунчеры и ярлыки
+docs/              спецификация и ADR (Obsidian-vault)
+docs/DEBT.md       реестр нерешённых вопросов и долгов
 eval/              eval-наборы v0.1
 scripts/           init_db и служебные скрипты
 tests/             юнит- и интеграционные тесты
