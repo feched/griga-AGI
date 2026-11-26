@@ -3,6 +3,24 @@
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версии — [SemVer](https://semver.org/lang/ru/).
 
+## [Unreleased]
+
+### Added
+
+- **Многоходовые сценарии (M11)** — `eval/multi_turn/scenarios.json`
+  (5 сценариев по 12–14 ходов), `griga/evaluation/multi_turn.py`,
+  `scripts/run_multi_turn.py`, тесты. Каждый сценарий идёт на чистом
+  in-memory графе; проверяются намерения, слова и инварианты графа.
+- `MemoryStorage` — in-memory хранилище с тем же API, что PostgreSQL.
+- `griga/evaluation/text.py` — сравнение слов с учётом склонения.
+
+### Known issues (M12)
+
+- Baseline M11: 46/64 ходов (72%), 0/5 сценариев. Дыры: местоимения и
+  личные факты, агрегация свойств, удаление опровергнутых рёбер, оговорка
+  на yes/no, выбор связи по смыслу вопроса, транзитивный вывод. Полный
+  список — `docs/DEBT.md` (DEBT-207…DEBT-215).
+
 ## [0.1.0] — 2026-11-25
 
 Первый релиз v0.1: граф знаний, активация, обучение, диалог на русском,

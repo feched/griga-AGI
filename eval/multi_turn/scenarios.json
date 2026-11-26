@@ -1,0 +1,394 @@
+[
+  {
+    "id": "scenario_1_intro",
+    "description": "Знакомство и личные факты: имя, любимый напиток, город",
+    "turns": [
+      {
+        "user": "Привет, меня зовут Саша.",
+        "expected_intent": "greet",
+        "expected_contains": ["Саша"],
+        "note": "приветствие должно заодно вернуть имя"
+      },
+      {
+        "user": "Я люблю кофе.",
+        "expected_intent": "statement",
+        "expected_contains": ["кофе"],
+        "note": "личный факт от первого лица"
+      },
+      {
+        "user": "Я живу в Москве.",
+        "expected_intent": "statement",
+        "expected_contains": ["Москве"],
+        "note": "второй личный факт"
+      },
+      {
+        "user": "Москва — это город.",
+        "expected_intent": "statement",
+        "expected_contains": ["город"]
+      },
+      {
+        "user": "Что такое Москва?",
+        "expected_intent": "answer",
+        "expected_contains": ["город"]
+      },
+      {
+        "user": "Как меня зовут?",
+        "expected_intent": "answer",
+        "expected_contains": ["Саша"],
+        "note": "имя из первой реплики"
+      },
+      {
+        "user": "Что я люблю?",
+        "expected_intent": "answer",
+        "expected_contains": ["кофе"],
+        "note": "любимый напиток из второй реплики"
+      },
+      {
+        "user": "Где я живу?",
+        "expected_intent": "answer",
+        "expected_contains": ["Москве"],
+        "note": "город из третьей реплики"
+      },
+      {
+        "user": "Я люблю чай.",
+        "expected_intent": "statement",
+        "expected_contains": ["чай"],
+        "note": "ещё один личный факт"
+      },
+      {
+        "user": "Что я люблю?",
+        "expected_intent": "answer",
+        "expected_contains": ["кофе"],
+        "note": "после пяти реплик контекст должен сохраниться"
+      },
+      {
+        "user": "Меня зовут Саша.",
+        "expected_intent": "statement",
+        "expected_contains": ["Саша"],
+        "note": "имя ещё раз, уже без приветствия"
+      },
+      {
+        "user": "Саша — это человек.",
+        "expected_intent": "statement",
+        "expected_contains": ["человек"],
+        "note": "факт о третьем лице"
+      },
+      {
+        "user": "Кто Саша?",
+        "expected_intent": "answer",
+        "expected_contains": ["человек"]
+      },
+      {
+        "user": "Как меня зовут?",
+        "expected_intent": "answer",
+        "expected_contains": ["Саша"],
+        "note": "финальная проверка удержания имени"
+      }
+    ]
+  },
+  {
+    "id": "scenario_2_properties",
+    "description": "Свойства и уточнения: два свойства травы через несколько ходов",
+    "turns": [
+      {
+        "user": "Трава зелёная.",
+        "expected_intent": "statement",
+        "expected_contains": ["зелёная"]
+      },
+      {
+        "user": "Трава мягкая.",
+        "expected_intent": "statement",
+        "expected_contains": ["мягкая"]
+      },
+      {
+        "user": "Трава — это растение.",
+        "expected_intent": "statement",
+        "expected_contains": ["растение"]
+      },
+      {
+        "user": "Что такое трава?",
+        "expected_intent": "answer",
+        "expected_contains": ["растение"]
+      },
+      {
+        "user": "Какая трава?",
+        "expected_intent": "answer",
+        "expected_contains": ["зелёная"],
+        "note": "первое свойство из рабочей памяти"
+      },
+      {
+        "user": "Какая трава?",
+        "expected_intent": "answer",
+        "expected_contains": ["мягкая"],
+        "note": "второй ответ не должен дословно повторять первый"
+      },
+      {
+        "user": "Трава мягкая?",
+        "expected_intent": "answer",
+        "expected_contains": ["да"]
+      },
+      {
+        "user": "Трава твёрдая?",
+        "expected_intent": "dont_know",
+        "expected_contains": ["нет"],
+        "note": "честное незнание вместо выдумки"
+      },
+      {
+        "user": "Трава — это животное.",
+        "expected_intent": "statement",
+        "expected_contains": ["животное"],
+        "note": "конфликт с is_a: пишется с низким весом"
+      },
+      {
+        "user": "Что такое трава?",
+        "expected_intent": "answer",
+        "expected_contains": ["растение"],
+        "note": "растение остаётся основным определением"
+      },
+      {
+        "user": "Какая трава?",
+        "expected_intent": "answer",
+        "expected_contains": ["зелёная", "мягкая"],
+        "note": "нужны оба свойства сразу"
+      },
+      {
+        "user": "Трава зелёная?",
+        "expected_intent": "answer",
+        "expected_contains": ["да"]
+      }
+    ]
+  },
+  {
+    "id": "scenario_3_unknown",
+    "description": "Вопросы и незнание: не знаю → факт → отвечаю",
+    "turns": [
+      {
+        "user": "Что такое квазар?",
+        "expected_intent": "dont_know",
+        "expected_contains": [],
+        "note": "в графе пусто — честное незнание"
+      },
+      {
+        "user": "Квазар — это галактика.",
+        "expected_intent": "statement",
+        "expected_contains": ["галактика"]
+      },
+      {
+        "user": "Что такое квазар?",
+        "expected_intent": "answer",
+        "expected_contains": ["галактика"],
+        "note": "после обучения отвечает"
+      },
+      {
+        "user": "Квазар — это звезда?",
+        "expected_intent": "dont_know",
+        "expected_contains": ["нет"],
+        "note": "связи нет — не подтверждаем"
+      },
+      {
+        "user": "Что такое галактика?",
+        "expected_intent": "dont_know",
+        "expected_contains": [],
+        "note": "входящее ребро не является определением"
+      },
+      {
+        "user": "Галактика — это скопление звёзд.",
+        "expected_intent": "statement",
+        "expected_contains": ["скопление"]
+      },
+      {
+        "user": "Что такое галактика?",
+        "expected_intent": "answer",
+        "expected_contains": ["скопление"]
+      },
+      {
+        "user": "Квазар — это галактика?",
+        "expected_intent": "answer",
+        "expected_contains": ["да"]
+      },
+      {
+        "user": "Что такое квазар?",
+        "expected_intent": "answer",
+        "expected_contains": ["галактика"]
+      },
+      {
+        "user": "Что такое чёрная дыра?",
+        "expected_intent": "dont_know",
+        "expected_contains": []
+      },
+      {
+        "user": "Чёрная дыра — это объект.",
+        "expected_intent": "statement",
+        "expected_contains": ["объект"]
+      },
+      {
+        "user": "Что такое чёрная дыра?",
+        "expected_intent": "answer",
+        "expected_contains": ["объект"]
+      }
+    ]
+  },
+  {
+    "id": "scenario_4_correction",
+    "description": "Отрицание и коррекция: старый факт должен быть заменён",
+    "turns": [
+      {
+        "user": "Трава синяя.",
+        "expected_intent": "statement",
+        "expected_contains": ["синяя"]
+      },
+      {
+        "user": "Трава синяя?",
+        "expected_intent": "answer",
+        "expected_contains": ["да"]
+      },
+      {
+        "user": "Нет, трава зелёная.",
+        "expected_intent": "statement",
+        "expected_contains": ["зелёная"],
+        "note": "коррекция должна заменить синий цвет"
+      },
+      {
+        "user": "Трава синяя?",
+        "expected_intent": "answer",
+        "expected_contains": ["нет"],
+        "note": "после коррекции не должна подтверждаться"
+      },
+      {
+        "user": "Трава зелёная?",
+        "expected_intent": "answer",
+        "expected_contains": ["да"]
+      },
+      {
+        "user": "Трава — это растение.",
+        "expected_intent": "statement",
+        "expected_contains": ["растение"]
+      },
+      {
+        "user": "Трава — это животное.",
+        "expected_intent": "statement",
+        "expected_contains": ["животное"],
+        "note": "конфликтующее is_a получает низкий вес"
+      },
+      {
+        "user": "Что такое трава?",
+        "expected_intent": "answer",
+        "expected_contains": ["растение"]
+      },
+      {
+        "user": "Трава — это животное?",
+        "expected_intent": "ответить_с_оговоркой",
+        "expected_contains": ["животное"],
+        "note": "низкий вес — ответ с оговоркой, а не прямо"
+      },
+      {
+        "user": "Нет, трава — это растение.",
+        "expected_intent": "statement",
+        "expected_contains": ["растение"]
+      },
+      {
+        "user": "Что такое трава?",
+        "expected_intent": "answer",
+        "expected_contains": ["растение"]
+      },
+      {
+        "user": "Трава зелёная?",
+        "expected_intent": "answer",
+        "expected_contains": ["да"]
+      }
+    ],
+    "invariants": [
+      {
+        "source": "трава",
+        "relation": "has_property",
+        "target": "синяя",
+        "present": false
+      },
+      {
+        "source": "трава",
+        "relation": "has_property",
+        "target": "зелёная",
+        "present": true
+      }
+    ]
+  },
+  {
+    "id": "scenario_5_story",
+    "description": "Сложный диалог: мини-история из трёх фактов и каверзные вопросы",
+    "turns": [
+      {
+        "user": "Саша живёт в Москве.",
+        "expected_intent": "statement",
+        "expected_contains": ["Москве"]
+      },
+      {
+        "user": "Москва — это город.",
+        "expected_intent": "statement",
+        "expected_contains": ["город"]
+      },
+      {
+        "user": "Саша любит кофе.",
+        "expected_intent": "statement",
+        "expected_contains": ["кофе"]
+      },
+      {
+        "user": "Россия — это страна.",
+        "expected_intent": "statement",
+        "expected_contains": ["страна"]
+      },
+      {
+        "user": "Где живёт Саша?",
+        "expected_intent": "answer",
+        "expected_contains": ["Москве"]
+      },
+      {
+        "user": "Что такое Москва?",
+        "expected_intent": "answer",
+        "expected_contains": ["город"]
+      },
+      {
+        "user": "Саша любит кофе?",
+        "expected_intent": "answer",
+        "expected_contains": ["да"]
+      },
+      {
+        "user": "Что любит Саша?",
+        "expected_intent": "answer",
+        "expected_contains": ["кофе"],
+        "note": "выбор связи по смыслу вопроса, не по порядку"
+      },
+      {
+        "user": "Где живёт Саша?",
+        "expected_intent": "answer",
+        "expected_contains": ["Москве"],
+        "note": "повтор вопроса не должен ломать ответ"
+      },
+      {
+        "user": "Саша живёт в городе?",
+        "expected_intent": "answer",
+        "expected_contains": ["Москве"],
+        "note": "вывод через Москва → город"
+      },
+      {
+        "user": "Москва — это город?",
+        "expected_intent": "answer",
+        "expected_contains": ["да"]
+      },
+      {
+        "user": "Что такое Москва?",
+        "expected_intent": "answer",
+        "expected_contains": ["город"]
+      },
+      {
+        "user": "Где живёт Саша?",
+        "expected_intent": "answer",
+        "expected_contains": ["Москве"]
+      },
+      {
+        "user": "Саша живёт в Москве?",
+        "expected_intent": "answer",
+        "expected_contains": ["да"]
+      }
+    ]
+  }
+]

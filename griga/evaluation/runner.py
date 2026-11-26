@@ -14,6 +14,7 @@ from typing import Any, Iterable
 
 from griga.config import Config
 from griga.dialogue import Dialogue, TurnResult
+from griga.evaluation.text import mentions_word
 from griga.graph.graph import KnowledgeGraph
 from griga.perception import PerceptionParser, apply_parse
 
@@ -175,19 +176,6 @@ def seed_graph(
     return graph.node_count - nodes_before, graph.edge_count - edges_before
 
 
-def _mentions(response: str, word: str) -> bool:
-    """Совпадение с учётом склонения: «дерево» ≈ «дерева»."""
-    needle = word.casefold().strip()
-    if not needle:
-        return True
-    if needle in response:
-        return True
-    if len(needle) <= 4:
-        return False
-    stem = needle[: len(needle) - 2]
-    return stem in response
-
-
 def _check_turn(
     case: EvalCase,
     turn: TurnResult,
@@ -205,7 +193,7 @@ def _check_turn(
 
     response = turn.response.casefold()
     for word in case.contains:
-        if not _mentions(response, word):
+        if not mentions_word(response, word):
             failures.append(f"в ответе нет {word!r}")
 
     if previous is not None and turn.response == previous:

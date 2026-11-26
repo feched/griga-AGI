@@ -43,6 +43,16 @@
 - ответ не повторяет предыдущую реплику;
 - активация в рабочей памяти не превышает `activation.clamp`.
 
+## Многоходовые сценарии (M11)
+
+Проверка удержания контекста: `eval/multi_turn/scenarios.json` + раннер
+`scripts/run_multi_turn.py`. Подробности —
+[`multi_turn/README.md`](multi_turn/README.md).
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.run_multi_turn
+```
+
 ## Позже
 
 VISION §7: по 100 задач на каждый из 5 доменов (разработка, поиск и
