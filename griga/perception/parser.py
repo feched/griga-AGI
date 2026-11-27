@@ -170,6 +170,12 @@ _COPULA_RE = re.compile(
     r"(?:это|является|называется|значит)\s+(?P<right>[^,;:]+)$",
     re.IGNORECASE,
 )
+# «Что такое чёрная дыра?» — вопрос об определении составного термина
+# (DEBT-211). «Что такое Москва?» тоже сюда, термин из одного слова.
+_DEFINITION_RE = re.compile(
+    r"^\s*что\s+такое\s+(?P<term>[^?!.]+?)\s*[?!.]?\s*$",
+    re.IGNORECASE,
+)
 _WORD_RE = re.compile(r"[А-Яа-яЁёA-Za-z]+(?:-[А-Яа-яЁёA-Za-z]+)?")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+|\n+")
 _TERMINAL_RE = re.compile(r"[\s.!?…\"'»)]+$")
@@ -296,6 +302,12 @@ class PerceptionParser:
             statements.extend(sentence_statements)
             statements.extend(copula_statements)
 
+            # «Что такое чёрная дыра?» — термин из прилагательного и
+            # существительного ищем как единый концепт (DEBT-211).
+            term = self._definition_term(sentence)
+            if term is not None:
+                mentions.append(term)
+
         return ParseResult(
             text=normalized,
             nodes=tuple(self._dedupe_mentions(mentions)),
@@ -331,6 +343,9 @@ class PerceptionParser:
         modality = next((w for w in words if w in _UNCERTAINTY_WORDS), None)
         has_negation = _has_negation(text)
         correction = any(_CORRECTION_RE.match(sentence) for sentence in sentences)
+        definition = any(
+            _DEFINITION_RE.match(sentence) for sentence in sentences
+        )
 
         if greeting is not None:
             speech_act = SpeechAct.GREETING
@@ -355,6 +370,7 @@ class PerceptionParser:
             greeting=greeting,
             modality=modality,
             correction=correction,
+            definition=definition,
         )
 
     def _detect_greeting(self, sentences: tuple[str, ...]) -> str | None:
@@ -669,8 +685,21 @@ class PerceptionParser:
                     )
                 )
 
-        # 2. Свойства: прилагательное при существительном.
+        # 2. Свойства: прилагательное-сказуемое при существительном.
+        #    Прилагательное-определение (amod) в вопросе «Что такое …?»
+        #    или в связке «Чёрная дыра — это объект» — часть термина, а не
+        #    факт «дыра чёрная» (DEBT-211).
+        definition_question = is_question and markers.definition
+        has_copula = any(
+            token.deprel == "cop"
+            or token.form.lower() in {"это", "является"}
+            for token in tree.tokens
+        )
         for adjective in tree.adjectives:
+            if definition_question:
+                continue
+            if adjective.deprel == "amod" and has_copula:
+                continue
             subject_token = tree.subject_of(adjective)
             if subject_token is None:
                 head = tree.token(adjective.head)
@@ -755,7 +784,7 @@ class PerceptionParser:
         if match is None:
             return [], []
 
-        left = self._phrase_mentions(match.group("left"))
+        left = self._merge_terms(self._phrase_mentions(match.group("left")))
         right = self._phrase_mentions(match.group("right"))
         subject = next((item for item in left if item.is_concept), None)
         if subject is None or not right:
@@ -835,7 +864,7 @@ class PerceptionParser:
         ):
             return [], []
 
-        left = self._phrase_mentions(match.group("left"))
+        left = self._merge_terms(self._phrase_mentions(match.group("left")))
         right = self._phrase_mentions(match.group("right"))
         subjects = [item for item in left if item.is_concept]
         if len(subjects) != 1 or not right:
@@ -914,6 +943,11 @@ class PerceptionParser:
         for word in words:
             pos = self.morph.pos(word)
             analyzed.append((word, pos, self._mention_from_form(word)))
+
+        # «Что такое …?» — вопрос об определении, а не проверка свойства
+        # (DEBT-211): прилагательное входит в термин.
+        if is_question and markers.definition:
+            return mentions, []
 
         verb_index = next(
             (i for i, (_, pos, _) in enumerate(analyzed) if pos in {"VERB", "INFN"}),
@@ -1082,6 +1116,72 @@ class PerceptionParser:
             if item is not None:
                 result.append(item)
         return result
+
+    def _merge_terms(self, mentions: list[Mention]) -> list[Mention]:
+        """Склеивает «прилагательное + существительное» в один концепт.
+
+        «чёрная дыра» — это термин, а не свойство «дыра чёрная»
+        (DEBT-211). Слияние делается только для имени/подлежащего, не для
+        именной части сказуемого.
+        """
+        merged: list[Mention] = []
+        adjectives: list[Mention] = []
+        for mention in mentions:
+            if mention.is_property:
+                adjectives.append(mention)
+                continue
+            if mention.is_concept and adjectives:
+                gender = self.morph.gender(mention.lemma)
+                adjective_lemmas = [
+                    normalize_word(
+                        self.morph.inflect_adjective(
+                            item.lemma,
+                            case="nominative",
+                            gender=gender,
+                        )
+                    )
+                    for item in adjectives
+                ]
+                merged.append(
+                    Mention(
+                        lemma=" ".join(adjective_lemmas + [mention.lemma]),
+                        form=" ".join(
+                            [item.form for item in adjectives]
+                            + [mention.form]
+                        ),
+                        pos="NOUN",
+                        node_type=NodeType.CONCEPT,
+                        features=dict(mention.features),
+                    )
+                )
+                adjectives = []
+                continue
+            if adjectives:
+                merged.extend(adjectives)
+                adjectives = []
+            merged.append(mention)
+        merged.extend(adjectives)
+        return merged
+
+    def _definition_term(self, sentence: str) -> Mention | None:
+        """Составной термин из вопроса «Что такое …?» (DEBT-211)."""
+        match = _DEFINITION_RE.match(sentence.strip())
+        if match is None:
+            return None
+        words = _WORD_RE.findall(match.group("term"))
+        if len(words) < 2:
+            return None
+        merged = self._merge_terms(
+            self._phrase_mentions(match.group("term"))
+        )
+        return next(
+            (
+                item
+                for item in merged
+                if item.is_concept and " " in item.lemma
+            ),
+            None,
+        )
 
     def _mention_from_form(
         self, form: str, pos: str | None = None

@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from griga.config import Config, load_config
 from griga.graph.graph import KnowledgeGraph
 from griga.graph.node import Node, NodeType
-from griga.graph.relations import RelationType
+from griga.graph.relations import RelationType, label_matches
 from griga.perception.models import (
     USER_LEMMA,
     USER_NAME_LABEL,
@@ -37,6 +37,7 @@ from griga.speech.intents import (
     Intent,
     IntentDecision,
     choose_intent,
+    definition_edges,
     open_question_edges,
     question_statements,
     topic_node,
@@ -56,6 +57,16 @@ _EMOTION_ADVERBS = {
 }
 
 _FALLBACK_TEXT = "Я запутался, давай переформулируем."
+
+# Личные местоимения для узла «пользователь» (DEBT-217).
+_USER_PRONOUNS = {
+    "nominative": "ты",
+    "genitive": "тебя",
+    "accusative": "тебя",
+    "dative": "тебе",
+    "instrumental": "тобой",
+    "prepositional": "тебе",
+}
 
 
 @dataclass(frozen=True)
@@ -80,6 +91,8 @@ class SlotValue:
     node_type: NodeType = NodeType.CONCEPT
     node_id: uuid.UUID | None = None
     pos: str = "NOUN"
+    is_user: bool = False
+    proper: bool = False
 
 
 @dataclass(frozen=True)
@@ -364,10 +377,11 @@ class Generator:
             for construction in by_intent(
                 self.constructions, Intent.ACKNOWLEDGE
             ):
-                if (
-                    construction.id == "ack_name"
-                    and statement.label != USER_NAME_LABEL
+                if construction.label and not label_matches(
+                    construction.label, statement.label
                 ):
+                    continue
+                if construction.user_only and not values["X"].is_user:
                     continue
                 pattern = construction.graph_pattern
                 if pattern.relation is not None and (
@@ -451,8 +465,13 @@ class Generator:
             return []
 
         candidates: list[_Candidate] = []
+        if result.markers.definition:
+            # «Что такое X?» — только исходящие определения (DEBT-215).
+            edges = definition_edges(self.graph, topic, owner_id)
+        else:
+            edges = visible_edges(self.graph, topic, owner_id)
         edges = sorted(
-            visible_edges(self.graph, topic, owner_id),
+            edges,
             key=lambda item: item.weight,
             reverse=True,
         )
@@ -614,6 +633,12 @@ class Generator:
                     continue
                 if yes_no is not None and construction.yes_no != yes_no:
                     continue
+                if construction.label and not label_matches(
+                    construction.label, edge.metadata.get("label")
+                ):
+                    continue
+                if construction.user_only and not values["X"].is_user:
+                    continue
                 if not self._vocabulary_matches(
                     construction, verb, preposition
                 ):
@@ -634,26 +659,49 @@ class Generator:
 
     # --- служебные преобразования -------------------------------------
 
-    @staticmethod
-    def _slot_from_node(node: Node) -> SlotValue:
+    def _slot_from_node(self, node: Node) -> SlotValue:
         return SlotValue(
             lemma=node.name,
             node_type=node.node_type,
             node_id=node.id,
+            pos=str(node.metadata.get("pos") or "NOUN"),
+            is_user=node.name.casefold() == USER_LEMMA,
+            proper=self._is_proper_name(node),
         )
 
-    @staticmethod
+    def _is_proper_name(self, node: Node) -> bool:
+        """Имя собственное: PROPN или имя пользователя из ребра «имя»."""
+        if str(node.metadata.get("pos") or "") == "PROPN":
+            return True
+        if node.name.casefold() == USER_LEMMA:
+            return False
+        return any(
+            edge.metadata.get("label") == USER_NAME_LABEL
+            and not edge.is_negated
+            for edge in self.graph.get_in_edges(node.id)
+        )
+
     def _slot_from_statement(
+        self,
         statement: Statement,
         index: int,
         node: Node | None,
     ) -> SlotValue:
         mention = statement.subject if index == 0 else statement.object
+        is_user = mention.lemma.casefold() == USER_LEMMA
+        if node is not None:
+            proper = self._is_proper_name(node)
+        else:
+            proper = str(mention.pos) == "PROPN" or (
+                index == 1 and statement.label == USER_NAME_LABEL
+            )
         return SlotValue(
             lemma=node.name if node is not None else mention.lemma,
             node_type=mention.node_type,
             node_id=node.id if node is not None else None,
             pos=mention.pos,
+            is_user=is_user,
+            proper=proper,
         )
 
     def _verb_parts(
@@ -712,9 +760,17 @@ class Generator:
         if "{VERB_PRES}" in text:
             if not candidate.verb_lemma:
                 return ""
+            subject = candidate.values.get("X")
+            person = (
+                "2per"
+                if subject is not None and subject.is_user
+                else "3per"
+            )
             text = text.replace(
                 "{VERB_PRES}",
-                self.morph.conjugate_present(candidate.verb_lemma),
+                self.morph.conjugate_present(
+                    candidate.verb_lemma, person=person
+                ),
             )
 
         if "{PREP}" in text:
@@ -741,6 +797,9 @@ class Generator:
         if case == "auto":
             case = case_for_preposition(candidate.preposition)
 
+        if value.is_user and value.node_type is NodeType.CONCEPT:
+            return _USER_PRONOUNS.get(case, "ты")
+
         if value.node_type is NodeType.PROPERTY or spec.pos == "adjective":
             gender = None
             if spec.agree_with:
@@ -753,7 +812,27 @@ class Generator:
                 gender=gender,
             )
 
-        return self.morph.inflect_noun(value.lemma, case)
+        text = self._inflect_phrase(value.lemma, case)
+        if value.proper:
+            text = text[:1].upper() + text[1:]
+        return text
+
+    def _inflect_phrase(self, lemma: str, case: str) -> str:
+        """Склоняет слово или составной термин «чёрная дыра» (DEBT-211)."""
+        words = lemma.split()
+        if len(words) <= 1:
+            return self.morph.inflect_noun(lemma, case)
+
+        head = words[-1]
+        gender = self.morph.gender(head)
+        inflected = [
+            self.morph.inflect_adjective(
+                word, case=case, gender=gender
+            )
+            for word in words[:-1]
+        ]
+        inflected.append(self.morph.inflect_noun(head, case))
+        return " ".join(inflected)
 
     # --- мониторинг ----------------------------------------------------
 

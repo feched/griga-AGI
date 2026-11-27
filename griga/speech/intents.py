@@ -120,6 +120,40 @@ def open_question_edges(
     ]
 
 
+def definition_edges(
+    graph: KnowledgeGraph,
+    node: Node,
+    owner_id: uuid.UUID | None = None,
+):
+    """Рёбра, которые годятся для ответа «Что такое X?» (DEBT-215).
+
+    Сначала исходящие определения (is_a, part_of), потом прочие
+    исходящие связи. Входящие is_a не годятся: «квазар → галактика» не
+    делает галактику квазаром. Входящие прочие связи допустимы как
+    слабый ответ («Что такое свет?» → «Солнце даёт свет»).
+    """
+    def allowed(edge) -> bool:
+        return not edge.is_negated and (
+            owner_id is None or edge.owner_id in (None, owner_id)
+        )
+
+    out = [edge for edge in graph.get_out_edges(node.id) if allowed(edge)]
+    definitional = [
+        edge
+        for edge in out
+        if edge.relation_type in {RelationType.IS_A, RelationType.PART_OF}
+    ]
+    if definitional:
+        return definitional
+    if out:
+        return out
+    return [
+        edge
+        for edge in graph.get_in_edges(node.id)
+        if allowed(edge) and edge.relation_type is not RelationType.IS_A
+    ]
+
+
 def choose_intent(
     result: ParseResult,
     graph: KnowledgeGraph,
@@ -139,6 +173,37 @@ def choose_intent(
         return IntentDecision(Intent.EMPATHIZE, reason="emotion")
 
     if markers.is_question:
+        # «Что такое X?» — определение ищется только по исходящим is_a:
+        # входящее «квазар → галактика» не делает галактику квазаром
+        # (DEBT-215).
+        if markers.definition:
+            if topic is None:
+                return IntentDecision(
+                    Intent.ADMIT_IGNORANCE,
+                    confidence=0.0,
+                    reason="definition topic is unknown",
+                )
+            edges = definition_edges(graph, topic, owner_id)
+            if not edges:
+                return IntentDecision(
+                    Intent.ADMIT_IGNORANCE,
+                    confidence=0.0,
+                    topic=topic,
+                    reason="definition not found",
+                )
+            best = max(edge.weight for edge in edges)
+            intent = (
+                Intent.ANSWER_DIRECTLY
+                if best >= 0.5
+                else Intent.ANSWER_WITH_HEDGE
+            )
+            return IntentDecision(
+                intent,
+                confidence=best,
+                topic=topic,
+                reason="definition found",
+            )
+
         asked = question_statements(result)
         if asked:
             statement = asked[0]

@@ -118,6 +118,7 @@ class Markers:
     greeting: str | None = None
     modality: str | None = None
     correction: bool = False
+    definition: bool = False
 
     @property
     def is_greeting(self) -> bool:

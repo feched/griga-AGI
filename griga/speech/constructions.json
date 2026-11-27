@@ -158,6 +158,16 @@
       "weight": 0.7
     },
     {
+      "id": "answer_name",
+      "intent": "ответить_прямо",
+      "template": "Тебя зовут {Y}.",
+      "graph_pattern": {"relation": "related_to", "direction": "forward"},
+      "slots": {"Y": {"pos": "noun", "case": "nominative"}},
+      "weight": 1.5,
+      "label": "имя",
+      "user_only": true
+    },
+    {
       "id": "answer_related_reverse",
       "intent": "ответить_прямо",
       "template": "Я знаю про связь: {X} и {Y}.",
@@ -419,7 +429,9 @@
       "template": "Запомнил: тебя зовут {Y}.",
       "graph_pattern": {"relation": "related_to", "direction": "forward"},
       "slots": {"Y": {"pos": "noun", "case": "nominative"}},
-      "weight": 1.0
+      "weight": 1.0,
+      "label": "имя",
+      "user_only": true
     },
     {
       "id": "ack_negation",

@@ -68,6 +68,8 @@ class Construction:
     weight: float = 1.0
     emotion: str | None = None
     yes_no: bool = False
+    label: str | None = None
+    user_only: bool = False
 
     @property
     def placeholders(self) -> frozenset[str]:
@@ -164,6 +166,10 @@ def _load_cached(path: str) -> tuple[Construction, ...]:
             weight=float(item.get("weight", 1.0)),
             emotion=item.get("emotion"),
             yes_no=bool(item.get("yes_no", False)),
+            label=(str(item["label"]).strip() or None)
+            if item.get("label")
+            else None,
+            user_only=bool(item.get("user_only", False)),
         )
 
         placeholders = construction.placeholders
