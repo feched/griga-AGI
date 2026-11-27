@@ -245,6 +245,46 @@ class KnowledgeGraph:
         )
         return target
 
+    def negate_edge(
+        self,
+        edge: Edge | uuid.UUID | str,
+        *,
+        source: str | None = None,
+    ) -> Edge:
+        """Гасит ребро, не удаляя его (DEBT-209).
+
+        Вес уходит в минимум схемы (0.05), в метаданные пишется
+        ``status = "negated"``. Ребро остаётся в графе как история, но
+        поиск/генерация его не используют.
+        """
+        target = self._resolve_edge(edge)
+        previous_weight = target.weight
+        previous_metadata = dict(target.metadata)
+
+        target.weight = Edge.MIN_WEIGHT
+        target.metadata = {**previous_metadata, "status": "negated"}
+        if source:
+            target.metadata["negated_by"] = source
+
+        try:
+            self.storage.save_edge(target)
+        except Exception:
+            target.weight = previous_weight
+            target.metadata = previous_metadata
+            raise
+        self._audit(
+            "edge",
+            target.id,
+            "negate",
+            before={
+                "weight": previous_weight,
+                "status": previous_metadata.get("status"),
+            },
+            after={"weight": target.weight, "status": "negated"},
+            source=source,
+        )
+        return target
+
     def _resolve_edge(self, edge: Edge | uuid.UUID | str) -> Edge:
         if isinstance(edge, Edge):
             found = self.edges.get(edge.id)

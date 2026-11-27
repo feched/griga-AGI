@@ -358,9 +358,9 @@ def _check_invariant(
 
     present = False
     if source is not None and target is not None:
-        present = (
-            graph.find_edge(source.id, target.id, relation) is not None
-        )
+        edge = graph.find_edge(source.id, target.id, relation)
+        # Погашенное ребро (status=negated) для сценария значит «нет».
+        present = edge is not None and not edge.is_negated
 
     passed = present == check.present
     if passed:

@@ -17,6 +17,12 @@ from griga.graph.node import NodeType
 from griga.graph.relations import RelationType
 
 
+# Узел, которым обозначается сам говорящий. «Я люблю кофе» пишется как
+# ``пользователь -[любить]-> кофе`` (DEBT-207).
+USER_LEMMA = "пользователь"
+USER_NAME_LABEL = "имя"
+
+
 class SpeechAct(str, Enum):
     """Тип реплики пользователя (ADR-002, маркеры)."""
 
@@ -76,11 +82,20 @@ class Statement:
     is_question: bool = False
     source_text: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
+    correction: bool = False
 
     @property
     def is_fact(self) -> bool:
         """Можно ли писать в долговременный граф (ADR-002)."""
         return self.polarity is Polarity.ASSERTED and not self.is_question
+
+    @property
+    def is_open_question(self) -> bool:
+        """Вопрос «что/где/как …?», где искомый объект ещё не назван."""
+        return (
+            self.is_question
+            and self.object.features.get("open_question") == "true"
+        )
 
     @property
     def weight(self) -> float:
@@ -102,6 +117,7 @@ class Markers:
     question_word: str | None = None
     greeting: str | None = None
     modality: str | None = None
+    correction: bool = False
 
     @property
     def is_greeting(self) -> bool:

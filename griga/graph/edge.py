@@ -42,6 +42,11 @@ class Edge:
         if not 0.05 <= self.weight <= 1.0:
             raise ValueError("Edge.weight must be in [0.05, 1.0]")
 
+    @property
+    def is_negated(self) -> bool:
+        """Ребро опровергнуто более поздним фактом (DEBT-209)."""
+        return self.metadata.get("status") == "negated"
+
     def to_row(self) -> dict[str, Any]:
         """Параметры для INSERT/UPDATE в таблицу edges."""
         return {

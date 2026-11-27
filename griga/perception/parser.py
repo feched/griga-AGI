@@ -19,6 +19,8 @@ from griga.config import Config, load_config
 from griga.graph.node import NodeType
 from griga.graph.relations import RelationType
 from griga.perception.models import (
+    USER_LEMMA,
+    USER_NAME_LABEL,
     Markers,
     Mention,
     ParseResult,
@@ -172,7 +174,42 @@ _WORD_RE = re.compile(r"[А-Яа-яЁёA-Za-z]+(?:-[А-Яа-яЁёA-Za-z]+)?")
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+|\n+")
 _TERMINAL_RE = re.compile(r"[\s.!?…\"'»)]+$")
 
-_NEGATION_RE = re.compile(r"(?:^|\s)(?:не|нет|ни)\s", re.IGNORECASE)
+# «Нет, …» / «Не, …» в начале реплики — маркер коррекции, а не отрицание
+# всего утверждения (DEBT-209). Запятая после «нет» тоже допустима.
+_NEGATION_RE = re.compile(
+    r"(?<![А-Яа-яЁёA-Za-z])(?:не|нет|ни)(?![А-Яа-яЁёA-Za-z])",
+    re.IGNORECASE,
+)
+_CORRECTION_RE = re.compile(
+    r"^\s*(?:нет|не)\s*[,:;—–-]\s*\S", re.IGNORECASE
+)
+
+# Местоимения и притяжательные формы первого лица → узел «пользователь».
+_FIRST_PERSON_FORMS = frozenset(
+    {
+        "я",
+        "меня",
+        "мне",
+        "мной",
+        "мною",
+        "мой",
+        "моя",
+        "моё",
+        "мое",
+        "мои",
+        "моих",
+        "моим",
+        "моими",
+        "моей",
+        "моем",
+        "моём",
+        "наш",
+        "наша",
+        "наше",
+        "наши",
+    }
+)
+_NAME_VERBS = frozenset({"звать", "называть", "называться"})
 
 _PROPERTY_POS = frozenset({"ADJF", "ADJS", "COMP", "PRTF", "PRTS"})
 
@@ -293,6 +330,7 @@ class PerceptionParser:
         attribution = self._detect_attribution(sentences)
         modality = next((w for w in words if w in _UNCERTAINTY_WORDS), None)
         has_negation = _has_negation(text)
+        correction = any(_CORRECTION_RE.match(sentence) for sentence in sentences)
 
         if greeting is not None:
             speech_act = SpeechAct.GREETING
@@ -316,6 +354,7 @@ class PerceptionParser:
             question_word=question_word,
             greeting=greeting,
             modality=modality,
+            correction=correction,
         )
 
     def _detect_greeting(self, sentences: tuple[str, ...]) -> str | None:
@@ -358,6 +397,17 @@ class PerceptionParser:
             return Polarity.UNSURE
         return Polarity.ASSERTED
 
+    def _sentence_polarity(
+        self, sentence: str, markers: Markers
+    ) -> Polarity:
+        """Отрицание, но не «Нет, …» — это коррекция, а не отказ от факта."""
+        correction = bool(_CORRECTION_RE.match(sentence.strip()))
+        return self._polarity(
+            _has_negation(sentence) and not correction,
+            markers,
+            sentence,
+        )
+
     def _confidence(
         self, polarity: Polarity, is_question: bool
     ) -> float:
@@ -390,6 +440,7 @@ class PerceptionParser:
             is_question=is_question,
             source_text=sentence,
             metadata={"parser": "udpipe" if self.syntax else "heuristic"},
+            correction=bool(_CORRECTION_RE.match(sentence.strip())),
         )
 
     def _verb_relation(
@@ -412,6 +463,115 @@ class PerceptionParser:
             return RelationType.RELATED_TO, f"{lemma}_{preposition}", False
         return RelationType.RELATED_TO, lemma, False
 
+    # --- личные факты и местоимения (DEBT-207) ------------------------
+
+    @staticmethod
+    def _is_first_person(token: SyntaxToken) -> bool:
+        # UDPipe тегирует «мой» то как PRON, то как DET, поэтому форму
+        # проверяем до части речи.
+        if normalize_word(token.form) in _FIRST_PERSON_FORMS:
+            return True
+        if not token.is_pronoun:
+            return False
+        return token.feats.get("Person") == "1"
+
+    def _is_first_person_word(self, word: str) -> bool:
+        if normalize_word(word) in _FIRST_PERSON_FORMS:
+            return True
+        return (
+            self.morph.is_pronoun(word)
+            and self.morph.feature(word, "person") == "1per"
+        )
+
+    @staticmethod
+    def _user_mention() -> Mention:
+        return Mention(
+            lemma=USER_LEMMA,
+            form="я",
+            pos="PRON",
+            node_type=NodeType.CONCEPT,
+            features={"person": "1"},
+        )
+
+    @staticmethod
+    def _open_mention(question_word: str | None) -> Mention:
+        """Заполнитель для вопроса, где искомый объект не назван."""
+        form = question_word or "что"
+        return Mention(
+            lemma=form,
+            form=form,
+            pos="PRON",
+            node_type=NodeType.CONCEPT,
+            features={"open_question": "true"},
+        )
+
+    def _subject_mention(self, token: SyntaxToken | None) -> Mention | None:
+        if token is None:
+            return None
+        if self._is_first_person(token):
+            return self._user_mention()
+        if token.is_pronoun:
+            return None
+        mention = self._mention(token)
+        if mention is None or not mention.is_concept:
+            return None
+        return mention
+
+    def _name_statement(
+        self,
+        verb: SyntaxToken,
+        tree: SyntaxTree,
+        markers: Markers,
+        is_question: bool,
+        sentence: str,
+        polarity: Polarity,
+    ) -> tuple[Statement | None, bool]:
+        """«Меня зовут Саша» → пользователь -[имя]-> Саша.
+
+        Возвращает ``(statement, handled)``. ``handled=True`` значит, что
+        глагол уже разобран и обычные правила к нему применять не нужно.
+        """
+        lemma = self.morph.normal_form(verb.form)
+        if lemma not in _NAME_VERBS:
+            return None, False
+
+        # «Меня» — местоимение, поэтому objects_of (только существительные)
+        # его не видит; смотрим всех детей глагола.
+        first_person = next(
+            (
+                token
+                for token in verb.children
+                if self._is_first_person(token)
+            ),
+            None,
+        )
+        if first_person is None:
+            return None, False
+
+        user = self._user_mention()
+        subject_token = tree.subject_of(verb)
+        if subject_token is not None and self._is_first_person(subject_token):
+            subject_token = None
+        name = self._mention(subject_token) if subject_token else None
+        if name is not None and not name.is_concept:
+            name = None
+
+        if name is None:
+            if not is_question:
+                return None, True
+            name = self._open_mention(markers.question_word or "что")
+
+        statement = self._statement(
+            user,
+            RelationType.RELATED_TO,
+            name,
+            USER_NAME_LABEL,
+            polarity=polarity,
+            is_question=is_question,
+            sentence=sentence,
+        )
+        return statement, True
+
     # --- разбор по дереву UDPipe ---------------------------------------
 
     def _parse_tree(
@@ -426,8 +586,10 @@ class PerceptionParser:
             for token in tree.tokens
             if (mention := self._mention(token))
         ]
+        if any(self._is_first_person(token) for token in tree.tokens):
+            mentions.append(self._user_mention())
 
-        polarity = self._polarity(_has_negation(sentence), markers, sentence)
+        polarity = self._sentence_polarity(sentence, markers)
         statements: list[Statement] = []
 
         # 1. Глагольные рёбра: субъект → глагол(+предлог) → объект.
@@ -443,11 +605,18 @@ class PerceptionParser:
             ):
                 continue
 
-            subject_token = tree.subject_of(verb)
-            if subject_token is None or subject_token.is_pronoun:
+            # «Меня зовут Саша» / «Как меня зовут?» — отдельная связка
+            # «пользователь -[имя]-> Саша» (DEBT-207).
+            name_statement, handled = self._name_statement(
+                verb, tree, markers, is_question, sentence, polarity
+            )
+            if handled:
+                if name_statement is not None:
+                    statements.append(name_statement)
                 continue
-            subject = self._mention(subject_token)
-            if subject is None or not subject.is_concept:
+
+            subject = self._subject_mention(tree.subject_of(verb))
+            if subject is None:
                 continue
 
             object_tokens = [
@@ -459,13 +628,35 @@ class PerceptionParser:
                 for token in tree.prepositional_objects_of(verb)
             ]
 
-            for object_token, preposition in object_tokens:
-                obj = self._mention(object_token)
-                if obj is None:
-                    continue
-                relation, label, swap = self._verb_relation(
-                    lemma, preposition
-                )
+            usable_objects = [
+                (token, preposition)
+                for token, preposition in object_tokens
+                if self._mention(token) is not None
+            ]
+
+            if usable_objects:
+                for object_token, preposition in usable_objects:
+                    obj = self._mention(object_token)
+                    if obj is None:
+                        continue
+                    relation, label, swap = self._verb_relation(
+                        lemma, preposition
+                    )
+                    statements.append(
+                        self._statement(
+                            obj if swap else subject,
+                            relation,
+                            subject if swap else obj,
+                            label,
+                            polarity=polarity,
+                            is_question=is_question,
+                            sentence=sentence,
+                        )
+                    )
+            elif is_question and markers.question_word is not None:
+                # «Что я люблю?», «Где я живу?» — объект ещё не назван.
+                relation, label, swap = self._verb_relation(lemma, None)
+                obj = self._open_mention(markers.question_word)
                 statements.append(
                     self._statement(
                         obj if swap else subject,
@@ -473,7 +664,7 @@ class PerceptionParser:
                         subject if swap else obj,
                         label,
                         polarity=polarity,
-                        is_question=is_question,
+                        is_question=True,
                         sentence=sentence,
                     )
                 )
@@ -485,12 +676,9 @@ class PerceptionParser:
                 head = tree.token(adjective.head)
                 if head is not None and head.is_noun:
                     subject_token = head
-            if subject_token is None or subject_token.is_pronoun:
-                continue
-
-            subject = self._mention(subject_token)
+            subject = self._subject_mention(subject_token)
             obj = self._mention(adjective)
-            if subject is None or obj is None or not subject.is_concept:
+            if subject is None or obj is None:
                 continue
 
             adjective_polarity = (
@@ -573,7 +761,7 @@ class PerceptionParser:
         if subject is None or not right:
             return left + right, []
 
-        polarity = self._polarity(_has_negation(body), markers, body)
+        polarity = self._sentence_polarity(body, markers)
         statements: list[Statement] = []
 
         if any(item.lemma in _PART_LEMMAS for item in right):
@@ -653,7 +841,7 @@ class PerceptionParser:
         if len(subjects) != 1 or not right:
             return left + right, []
 
-        polarity = self._polarity(_has_negation(sentence), markers, sentence)
+        polarity = self._sentence_polarity(sentence, markers)
         if any(item.lemma in _PART_LEMMAS for item in right):
             whole = [
                 item
@@ -713,13 +901,17 @@ class PerceptionParser:
             for word in words
             if (item := self._mention_from_form(word)) is not None
         ]
+        first_person = any(
+            self._is_first_person_word(word) for word in words
+        )
+        if first_person:
+            mentions.append(self._user_mention())
 
-        polarity = self._polarity(_has_negation(sentence), markers, sentence)
+        polarity = self._sentence_polarity(sentence, markers)
         statements: list[Statement] = []
 
         analyzed: list[tuple[str, str | None, Mention | None]] = []
         for word in words:
-            lemma = self.morph.normal_form(word)
             pos = self.morph.pos(word)
             analyzed.append((word, pos, self._mention_from_form(word)))
 
@@ -731,6 +923,35 @@ class PerceptionParser:
         if verb_index is not None:
             word, _, _ = analyzed[verb_index]
             lemma = self.morph.normal_form(word)
+
+            if lemma in _NAME_VERBS and first_person:
+                name_mentions = [
+                    mention
+                    for index, (_, pos, mention) in enumerate(analyzed)
+                    if index != verb_index
+                    and pos == "NOUN"
+                    and mention is not None
+                ]
+                if name_mentions:
+                    obj = name_mentions[-1]
+                elif is_question and markers.question_word is not None:
+                    obj = self._open_mention(markers.question_word)
+                else:
+                    obj = None
+                if obj is not None:
+                    statements.append(
+                        self._statement(
+                            self._user_mention(),
+                            RelationType.RELATED_TO,
+                            obj,
+                            USER_NAME_LABEL,
+                            polarity=polarity,
+                            is_question=is_question,
+                            sentence=sentence,
+                        )
+                    )
+                return mentions, statements
+
             subject = next(
                 (
                     mention
@@ -739,21 +960,45 @@ class PerceptionParser:
                 ),
                 None,
             )
+            if subject is None and any(
+                self._is_first_person_word(analyzed[i][0])
+                for i in range(verb_index)
+            ):
+                subject = self._user_mention()
+
             object_items = [
                 (i, mention)
                 for i, (_, pos, mention) in enumerate(analyzed)
                 if i > verb_index and pos == "NOUN" and mention is not None
             ]
             if subject is not None:
-                for index, obj in object_items:
-                    preposition = None
-                    if index > 0 and self.morph.is_preposition(
-                        analyzed[index - 1][0]
-                    ):
-                        preposition = normalize_word(analyzed[index - 1][0])
-                    relation, label, swap = self._verb_relation(
-                        lemma, preposition
-                    )
+                if object_items:
+                    for index, obj in object_items:
+                        preposition = None
+                        if index > 0 and self.morph.is_preposition(
+                            analyzed[index - 1][0]
+                        ):
+                            preposition = normalize_word(
+                                analyzed[index - 1][0]
+                            )
+                        relation, label, swap = self._verb_relation(
+                            lemma, preposition
+                        )
+                        statements.append(
+                            self._statement(
+                                obj if swap else subject,
+                                relation,
+                                subject if swap else obj,
+                                label,
+                                polarity=polarity,
+                                is_question=is_question,
+                                sentence=sentence,
+                            )
+                        )
+                        break
+                elif is_question and markers.question_word is not None:
+                    relation, label, swap = self._verb_relation(lemma, None)
+                    obj = self._open_mention(markers.question_word)
                     statements.append(
                         self._statement(
                             obj if swap else subject,
@@ -761,11 +1006,10 @@ class PerceptionParser:
                             subject if swap else obj,
                             label,
                             polarity=polarity,
-                            is_question=is_question,
+                            is_question=True,
                             sentence=sentence,
                         )
                     )
-                    break
         else:
             # Именное сказуемое: «X это Y», «X является Y».
             concepts = [
@@ -799,6 +1043,18 @@ class PerceptionParser:
                 statements.append(
                     self._statement(
                         concepts[0],
+                        RelationType.HAS_PROPERTY,
+                        properties[0],
+                        "свойство",
+                        polarity=polarity,
+                        is_question=is_question,
+                        sentence=sentence,
+                    )
+                )
+            elif first_person and properties:
+                statements.append(
+                    self._statement(
+                        self._user_mention(),
                         RelationType.HAS_PROPERTY,
                         properties[0],
                         "свойство",

@@ -119,6 +119,8 @@ class GraphValidator:
         for edge in self.graph.get_out_edges(subject_id):
             if edge.relation_type is not statement.relation:
                 continue
+            if edge.is_negated:
+                continue
             target = self.graph.nodes.get(edge.target_id)
             if target is None:
                 continue

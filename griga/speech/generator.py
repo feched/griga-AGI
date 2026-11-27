@@ -15,7 +15,12 @@ from griga.config import Config, load_config
 from griga.graph.graph import KnowledgeGraph
 from griga.graph.node import Node, NodeType
 from griga.graph.relations import RelationType
-from griga.perception.models import ParseResult, Statement
+from griga.perception.models import (
+    USER_LEMMA,
+    USER_NAME_LABEL,
+    ParseResult,
+    Statement,
+)
 from griga.perception.morphology import (
     Morphology,
     case_for_preposition,
@@ -32,6 +37,7 @@ from griga.speech.intents import (
     Intent,
     IntentDecision,
     choose_intent,
+    open_question_edges,
     question_statements,
     topic_node,
     visible_edges,
@@ -170,7 +176,7 @@ class Generator:
         owner_id: uuid.UUID | None,
     ) -> list[_Candidate]:
         if decision.intent is Intent.GREET:
-            return self._simple_candidates(Intent.GREET)
+            return self._greet_candidates(owner_id)
 
         if decision.intent is Intent.REFUSE:
             return self._simple_candidates(Intent.REFUSE)
@@ -240,6 +246,36 @@ class Generator:
             ),
             reverse=True,
         )
+
+    def _greet_candidates(
+        self,
+        owner_id: uuid.UUID | None,
+    ) -> list[_Candidate]:
+        """Приветствие по имени, если имя уже есть в графе (DEBT-207)."""
+        values: dict[str, SlotValue] = {}
+        name = self._user_name_node(owner_id)
+        if name is not None:
+            values["X"] = self._slot_from_node(name)
+        return self._simple_candidates(Intent.GREET, values=values)
+
+    def _user_name_node(
+        self,
+        owner_id: uuid.UUID | None,
+    ) -> Node | None:
+        user = self.graph.find_visible_node(
+            USER_LEMMA, NodeType.CONCEPT, owner_id
+        )
+        if user is None:
+            return None
+        for edge in self.graph.get_out_edges(user.id):
+            if edge.is_negated:
+                continue
+            if edge.metadata.get("label") != USER_NAME_LABEL:
+                continue
+            target = self.graph.nodes.get(edge.target_id)
+            if target is not None:
+                return target
+        return None
 
     def _ignorance_candidates(
         self,
@@ -328,6 +364,11 @@ class Generator:
             for construction in by_intent(
                 self.constructions, Intent.ACKNOWLEDGE
             ):
+                if (
+                    construction.id == "ack_name"
+                    and statement.label != USER_NAME_LABEL
+                ):
+                    continue
                 pattern = construction.graph_pattern
                 if pattern.relation is not None and (
                     pattern.relation is not statement.relation
@@ -381,12 +422,18 @@ class Generator:
                 statement.object.node_type,
                 owner_id,
             )
-            if subject is None or obj is None:
+            if subject is None:
                 return []
+            if obj is None:
+                if not statement.is_open_question:
+                    return []
+                return self._open_question_candidates(
+                    result, statement, subject, intents, owner_id
+                )
             edge = self.graph.find_edge(
                 subject.id, obj.id, statement.relation
             )
-            if edge is None:
+            if edge is None or edge.is_negated:
                 return []
             return self._edge_candidates(
                 edge,
@@ -440,6 +487,51 @@ class Generator:
 
         # Сначала прямые ответы, затем оговорки; внутри — релевантность
         # типу вопроса («что такое» → is_a, «где» → глагольная связь).
+        order = {intent: index for index, intent in enumerate(intents)}
+        question_word = result.markers.question_word
+        return sorted(
+            candidates,
+            key=lambda item: (
+                order.get(item.construction.intent, 99),
+                self._relation_priority(
+                    item.construction.graph_pattern.relation,
+                    question_word,
+                ),
+                -item.confidence,
+                -item.construction.weight,
+            ),
+        )
+
+    def _open_question_candidates(
+        self,
+        result: ParseResult,
+        statement: Statement,
+        subject: Node,
+        intents: list[Intent],
+        owner_id: uuid.UUID | None,
+    ) -> list[_Candidate]:
+        """«Что я люблю?» → рёбра субъекта, отобранные по глаголу вопроса."""
+        edges = sorted(
+            open_question_edges(self.graph, subject, statement, owner_id),
+            key=lambda item: item.weight,
+            reverse=True,
+        )
+        candidates: list[_Candidate] = []
+        for edge in edges[:8]:
+            other = self.graph.nodes.get(edge.target_id)
+            if other is None:
+                continue
+            candidates.extend(
+                self._edge_candidates(
+                    edge,
+                    subject,
+                    other,
+                    direction="forward",
+                    intents=intents,
+                    yes_no=False,
+                )
+            )
+
         order = {intent: index for index, intent in enumerate(intents)}
         question_word = result.markers.question_word
         return sorted(

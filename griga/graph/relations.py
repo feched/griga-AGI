@@ -28,3 +28,18 @@ _LABELS_RU: dict[RelationType, str] = {
 }
 
 BASE_RELATION_TYPES = frozenset(RelationType)
+
+
+def label_matches(asked: str | None, stored: str | None) -> bool:
+    """Совпадает ли метка вопроса/коррекции с меткой ребра.
+
+    «Где я живу?» даёт метку ``жить`` без предлога, а в графе лежит
+    ``жить_в``: сравниваем по основе до первого подчёркивания.
+    """
+    if not asked:
+        return True
+    if not stored:
+        return False
+    asked = asked.casefold()
+    stored = stored.casefold()
+    return stored == asked or stored.startswith(f"{asked}_")

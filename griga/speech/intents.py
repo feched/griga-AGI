@@ -19,7 +19,8 @@ from enum import Enum
 
 from griga.graph.graph import KnowledgeGraph
 from griga.graph.node import Node, NodeType
-from griga.perception.models import ParseResult, Polarity, SpeechAct
+from griga.graph.relations import RelationType, label_matches
+from griga.perception.models import ParseResult, Polarity, SpeechAct, Statement
 from griga.thinking.spreader import WorkingMemory
 
 
@@ -77,12 +78,45 @@ def visible_edges(
 ):
     """Исходящие и входящие рёбра, доступные этому пользователю."""
     edges = graph.get_out_edges(node.id) + graph.get_in_edges(node.id)
+    edges = [edge for edge in edges if not edge.is_negated]
     if owner_id is None:
         return edges
     return [
         edge
         for edge in edges
         if edge.owner_id is None or edge.owner_id == owner_id
+    ]
+
+
+def open_question_edges(
+    graph: KnowledgeGraph,
+    subject: Node,
+    statement: Statement,
+    owner_id: uuid.UUID | None = None,
+):
+    """Рёбра субъекта, подходящие под открытый вопрос (DEBT-207)."""
+    edges = graph.get_out_edges(subject.id)
+    if owner_id is not None:
+        edges = [
+            edge
+            for edge in edges
+            if edge.owner_id is None or edge.owner_id == owner_id
+        ]
+    edges = [edge for edge in edges if not edge.is_negated]
+
+    if statement.relation is RelationType.RELATED_TO:
+        return [
+            edge
+            for edge in edges
+            if edge.relation_type is RelationType.RELATED_TO
+            and label_matches(
+                statement.label, edge.metadata.get("label")
+            )
+        ]
+    return [
+        edge
+        for edge in edges
+        if edge.relation_type is statement.relation
     ]
 
 
@@ -118,13 +152,41 @@ def choose_intent(
                 statement.object.node_type,
                 owner_id,
             )
+
+            if (
+                subject is not None
+                and obj is None
+                and statement.is_open_question
+            ):
+                edges = open_question_edges(
+                    graph, subject, statement, owner_id
+                )
+                if not edges:
+                    return IntentDecision(
+                        Intent.ADMIT_IGNORANCE,
+                        confidence=0.0,
+                        topic=topic or subject,
+                        reason="open question fact not found",
+                    )
+                best = max(edge.weight for edge in edges)
+                intent = (
+                    Intent.ANSWER_DIRECTLY
+                    if best >= 0.5
+                    else Intent.ANSWER_WITH_HEDGE
+                )
+                return IntentDecision(
+                    intent,
+                    confidence=best,
+                    topic=topic or subject,
+                    reason="open question fact found",
+                )
             edge = None
             if subject is not None and obj is not None:
                 edge = graph.find_edge(
                     subject.id, obj.id, statement.relation
                 )
 
-            if edge is not None:
+            if edge is not None and not edge.is_negated:
                 intent = (
                     Intent.ANSWER_DIRECTLY
                     if edge.weight >= 0.5

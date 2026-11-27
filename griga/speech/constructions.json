@@ -17,6 +17,14 @@
       "weight": 0.8
     },
     {
+      "id": "greet_named",
+      "intent": "поздороваться",
+      "template": "Привет, {X}! Я Гриша. Что расскажешь?",
+      "graph_pattern": {},
+      "slots": {"X": {"pos": "noun", "case": "nominative"}},
+      "weight": 1.2
+    },
+    {
       "id": "empathize_question",
       "intent": "выразить_эмпатию",
       "template": "Похоже, тебе {EMOTION_ADV}. Хочешь об этом поговорить?",
@@ -403,6 +411,14 @@
         "X": {"pos": "noun", "case": "nominative"},
         "Y": {"pos": "noun", "case": "accusative"}
       },
+      "weight": 1.0
+    },
+    {
+      "id": "ack_name",
+      "intent": "запомнить_факт",
+      "template": "Запомнил: тебя зовут {Y}.",
+      "graph_pattern": {"relation": "related_to", "direction": "forward"},
+      "slots": {"Y": {"pos": "noun", "case": "nominative"}},
       "weight": 1.0
     },
     {

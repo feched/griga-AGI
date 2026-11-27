@@ -13,7 +13,13 @@ from dataclasses import dataclass
 from griga.graph.edge import Edge
 from griga.graph.graph import KnowledgeGraph
 from griga.graph.node import Node
-from griga.perception.models import Mention, ParseResult, Statement
+from griga.graph.relations import RelationType, label_matches
+from griga.perception.models import (
+    Mention,
+    ParseResult,
+    Polarity,
+    Statement,
+)
 from griga.validation import GraphValidator
 
 
@@ -26,6 +32,7 @@ class AppliedParse:
     skipped_statements: int = 0
     duplicate_edges: int = 0
     conflicting_edges: int = 0
+    negated_edges: tuple[Edge, ...] = ()
 
     @property
     def node_count(self) -> int:
@@ -113,6 +120,67 @@ def _apply_statement(
     return subject, obj, edge, subject_created or object_created
 
 
+def _negate_for_statement(
+    graph: KnowledgeGraph,
+    statement: Statement,
+    owner_id: uuid.UUID | None,
+) -> list[Edge]:
+    """Гасит рёбра, которые опровергает коррекция (DEBT-209).
+
+    «Нет, трава зелёная» отменяет прежние свойства того же субъекта.
+    Ограничение v0.1: измерения свойств не различаются, поэтому гасятся
+    все рёбра того же отношения, кроме нового объекта.
+    """
+    subject = graph.find_visible_node(
+        statement.subject.lemma,
+        statement.subject.node_type,
+        owner_id,
+    )
+    if subject is None:
+        return []
+
+    wanted = statement.object.lemma.strip().casefold()
+    negated: list[Edge] = []
+
+    def same_relation(edge: Edge) -> bool:
+        if edge.relation_type is not statement.relation:
+            return False
+        # «Нет, я люблю чай» не должно гасить «имя» или «жить_в».
+        if statement.relation is RelationType.RELATED_TO:
+            return label_matches(
+                statement.label, edge.metadata.get("label")
+            )
+        return True
+
+    if statement.polarity is Polarity.NEGATED:
+        # «Трава не синяя» гасит именно ребро к синему.
+        candidates = [
+            edge
+            for edge in graph.get_out_edges(subject.id)
+            if same_relation(edge)
+            and not edge.is_negated
+            and (target := graph.nodes.get(edge.target_id)) is not None
+            and target.name.strip().casefold() == wanted
+        ]
+    else:
+        candidates = [
+            edge
+            for edge in graph.get_out_edges(subject.id)
+            if same_relation(edge)
+            and not edge.is_negated
+            and (target := graph.nodes.get(edge.target_id)) is not None
+            and target.name.strip().casefold() != wanted
+        ]
+
+    for edge in candidates:
+        if owner_id is not None and edge.owner_id not in (None, owner_id):
+            continue
+        negated.append(
+            graph.negate_edge(edge, source=statement.source_text)
+        )
+    return negated
+
+
 def apply_parse(
     result: ParseResult,
     graph: KnowledgeGraph,
@@ -158,7 +226,22 @@ def apply_parse(
             if created:
                 remember(node)
 
+    negated_edges: list[Edge] = []
+
     for statement in result.statements:
+        if statement.is_question:
+            skipped += 1
+            continue
+
+        # Коррекция и отрицание гасят старые рёбра (DEBT-209).
+        if statement.correction or statement.polarity is Polarity.NEGATED:
+            negated_edges.extend(
+                _negate_for_statement(graph, statement, owner_id)
+            )
+            if not statement.is_fact:
+                skipped += 1
+                continue
+
         if not statement.is_fact:
             skipped += 1
             continue
@@ -200,4 +283,5 @@ def apply_parse(
         skipped_statements=skipped,
         duplicate_edges=duplicates,
         conflicting_edges=conflicts,
+        negated_edges=tuple(negated_edges),
     )

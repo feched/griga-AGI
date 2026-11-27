@@ -127,7 +127,17 @@ def test_property_question_avoids_repeating_response():
     assert first.response != second.response
 
 
-def test_stale_edge_invariant_fails_after_correction():
+def test_intro_scenario_retains_personal_context():
+    outcome = run_scenario(_scenario("scenario_1_intro"))
+
+    # DEBT-207: знакомство и личные факты должны пережить весь диалог.
+    assert outcome.passed_turns >= 10, outcome.first_failure()
+    assert "саша" in outcome.turns[0].response.casefold()
+    assert outcome.turns[5].passed  # «Как меня зовут?»
+    assert outcome.turns[7].passed  # «Где я живу?»
+
+
+def test_stale_edge_invariant_passes_after_correction():
     outcome = run_scenario(_scenario("scenario_4_correction"))
 
     stale = next(
@@ -141,10 +151,10 @@ def test_stale_edge_invariant_fails_after_correction():
         if item.check.target == "зелёная"
     )
 
-    assert not stale.passed
-    assert "есть, а не должно" in stale.detail
+    # DEBT-209: старое ребро погашено (status=negated), новое — активно.
+    assert stale.passed
     assert fresh.passed
-    assert not outcome.ok
+    assert outcome.failed_invariants == 0
 
 
 def test_absence_invariant_passes_on_empty_graph():
@@ -188,4 +198,4 @@ def test_summary_counts_turns_and_invariants():
     assert summary["turns"] == len(outcome.turns)
     assert summary["turns_passed"] == outcome.passed_turns
     assert summary["invariants"] == 2
-    assert summary["invariants_failed"] == 1
+    assert summary["invariants_failed"] == 0
