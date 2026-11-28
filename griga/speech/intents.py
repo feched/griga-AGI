@@ -154,6 +154,72 @@ def definition_edges(
     ]
 
 
+def contradiction_edges(
+    graph: KnowledgeGraph,
+    subject: Node,
+    asked_target_id: uuid.UUID | None,
+    owner_id: uuid.UUID | None = None,
+):
+    """Сильные альтернативы для is_a: «трава → растение» при вопросе
+    «трава — животное?» (DEBT-210)."""
+    result = []
+    for edge in graph.get_out_edges(subject.id):
+        if edge.relation_type is not RelationType.IS_A:
+            continue
+        if edge.is_negated or edge.target_id == asked_target_id:
+            continue
+        if edge.weight < 0.5:
+            continue
+        if owner_id is not None and edge.owner_id not in (None, owner_id):
+            continue
+        result.append(edge)
+    return result
+
+
+def transitive_edges(
+    graph: KnowledgeGraph,
+    subject: Node,
+    statement: Statement,
+    owner_id: uuid.UUID | None = None,
+):
+    """Путь A -[глагол]-> B -[is_a]-> C (DEBT-213).
+
+    v0.1: «Саша живёт в Москве» + «Москва — город» даёт ответ на
+    «Саша живёт в городе?». Правило работает только для related_to с
+    совпадающей меткой глагола и is_a.
+    """
+    if statement.relation is not RelationType.RELATED_TO:
+        return []
+
+    paths = []
+    for first in graph.get_out_edges(subject.id):
+        if first.relation_type is not RelationType.RELATED_TO:
+            continue
+        if first.is_negated or first.weight < 0.5:
+            continue
+        if owner_id is not None and first.owner_id not in (None, owner_id):
+            continue
+        if not label_matches(statement.label, first.metadata.get("label")):
+            continue
+        middle = graph.nodes.get(first.target_id)
+        if middle is None:
+            continue
+        for second in graph.get_out_edges(middle.id):
+            if second.relation_type is not RelationType.IS_A:
+                continue
+            if second.is_negated or second.weight < 0.5:
+                continue
+            if owner_id is not None and second.owner_id not in (None, owner_id):
+                continue
+            target = graph.nodes.get(second.target_id)
+            if target is None:
+                continue
+            if target.name.casefold() != statement.object.lemma.casefold():
+                continue
+            paths.append((first, middle, second, target, subject))
+    return paths
+
+
 def choose_intent(
     result: ParseResult,
     graph: KnowledgeGraph,
@@ -251,7 +317,36 @@ def choose_intent(
                     subject.id, obj.id, statement.relation
                 )
 
-            if edge is not None and not edge.is_negated:
+            if edge is not None and edge.is_negated:
+                # Факт был отвергнут коррекцией — спокойно говорим «нет»
+                # (DEBT-210).
+                return IntentDecision(
+                    Intent.ANSWER_DIRECTLY,
+                    confidence=1.0,
+                    topic=topic or subject,
+                    reason="yes/no fact is negated",
+                )
+
+            if (
+                subject is not None
+                and obj is not None
+                and statement.relation is RelationType.IS_A
+            ):
+                alternatives = contradiction_edges(
+                    graph, subject, obj.id, owner_id
+                )
+                if alternatives and (
+                    edge is None or edge.weight < 0.5
+                ):
+                    # «Трава — животное?», а в графе «трава → растение».
+                    return IntentDecision(
+                        Intent.ANSWER_DIRECTLY,
+                        confidence=1.0,
+                        topic=topic or subject,
+                        reason="yes/no contradicts is_a",
+                    )
+
+            if edge is not None:
                 intent = (
                     Intent.ANSWER_DIRECTLY
                     if edge.weight >= 0.5
@@ -263,6 +358,23 @@ def choose_intent(
                     topic=topic or subject,
                     reason="yes/no fact found",
                 )
+
+            if subject is not None:
+                paths = transitive_edges(
+                    graph, subject, statement, owner_id
+                )
+                if paths:
+                    # «Саша живёт в Москве» + «Москва — город».
+                    return IntentDecision(
+                        Intent.ANSWER_DIRECTLY,
+                        confidence=max(
+                            min(first.weight, second.weight)
+                            for first, _, second, _, _ in paths
+                        ),
+                        topic=topic or subject,
+                        reason="transitive fact",
+                    )
+
             return IntentDecision(
                 Intent.ADMIT_IGNORANCE,
                 confidence=0.0,

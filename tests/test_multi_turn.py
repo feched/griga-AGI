@@ -194,7 +194,7 @@ def test_summary_counts_turns_and_invariants():
     summary = summarize([outcome])
 
     assert summary["scenarios"] == 1
-    assert summary["scenarios_passed"] == 0
+    assert summary["scenarios_passed"] == 1
     assert summary["turns"] == len(outcome.turns)
     assert summary["turns_passed"] == outcome.passed_turns
     assert summary["invariants"] == 2

@@ -121,10 +121,11 @@ def test_negated_edge_is_not_used_in_answers(graph):
     stale = dialogue.turn("Трава синяя?")
     fresh = dialogue.turn("Трава зелёная?")
 
-    assert stale.intent != "ответить_прямо"
-    assert "нет" in stale.response.casefold()
+    assert stale.construction_id == "no_property"
+    assert stale.response.casefold().startswith("нет")
+    assert "да," not in stale.response.casefold()
     assert fresh.intent == "ответить_прямо"
-    assert "да" in fresh.response.casefold()
+    assert fresh.response.casefold().startswith("да")
 
 
 def test_greeting_uses_known_name(graph):

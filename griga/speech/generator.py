@@ -37,10 +37,12 @@ from griga.speech.intents import (
     Intent,
     IntentDecision,
     choose_intent,
+    contradiction_edges,
     definition_edges,
     open_question_edges,
     question_statements,
     topic_node,
+    transitive_edges,
     visible_edges,
 )
 from griga.thinking.spreader import WorkingMemory
@@ -93,6 +95,7 @@ class SlotValue:
     pos: str = "NOUN"
     is_user: bool = False
     proper: bool = False
+    text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -447,16 +450,28 @@ class Generator:
             edge = self.graph.find_edge(
                 subject.id, obj.id, statement.relation
             )
-            if edge is None or edge.is_negated:
-                return []
-            return self._edge_candidates(
-                edge,
-                subject,
-                obj,
-                direction="forward",
-                intents=intents,
-                yes_no=True,
-            )
+            if decision.reason == "yes/no contradicts is_a":
+                return self._contradiction_candidates(
+                    statement, subject, obj, intents, owner_id
+                )
+            if edge is not None and not edge.is_negated:
+                return self._edge_candidates(
+                    edge,
+                    subject,
+                    obj,
+                    direction="forward",
+                    intents=intents,
+                    yes_no=True,
+                )
+            if edge is not None and edge.is_negated:
+                return self._negative_candidates(
+                    statement, subject, obj, intents
+                )
+            if decision.reason == "transitive fact":
+                return self._transitive_candidates(
+                    statement, subject, intents, owner_id
+                )
+            return []
 
         topic = decision.topic or topic_node(
             result, self.graph, memory, owner_id
@@ -465,6 +480,16 @@ class Generator:
             return []
 
         candidates: list[_Candidate] = []
+        # «Какая трава?» — все свойства сразу: «Трава — зелёная и мягкая»
+        # (DEBT-208).
+        if (
+            not result.markers.definition
+            and result.markers.question_word
+            in {"какой", "какая", "какое", "какие", "чей"}
+        ):
+            candidates.extend(
+                self._aggregate_property_candidates(topic, intents)
+            )
         if result.markers.definition:
             # «Что такое X?» — только исходящие определения (DEBT-215).
             edges = definition_edges(self.graph, topic, owner_id)
@@ -625,6 +650,9 @@ class Generator:
             for construction in by_intent(self.constructions, intent):
                 pattern = construction.graph_pattern
 
+                if construction.id.startswith("no_"):
+                    # Отрицательные ответы собирает _negative_candidates.
+                    continue
                 if pattern.relation is None:
                     continue
                 if pattern.relation is not edge.relation_type:
@@ -657,6 +685,200 @@ class Generator:
                 )
         return candidates
 
+    # --- ответы на yes/no и вывод --------------------------------------
+
+    def _property_adjective(self, node: Node, topic: Node) -> str:
+        return self.morph.inflect_adjective(
+            node.name,
+            case="nominative",
+            gender=self.morph.gender(topic.name),
+        )
+
+    def _aggregate_property_candidates(
+        self,
+        topic: Node,
+        intents: list[Intent],
+    ) -> list[_Candidate]:
+        """Все свойства сразу: «Трава — зелёная и мягкая» (DEBT-208)."""
+        if Intent.ANSWER_DIRECTLY not in intents:
+            return []
+
+        edges = [
+            edge
+            for edge in self.graph.get_out_edges(topic.id)
+            if edge.relation_type is RelationType.HAS_PROPERTY
+            and not edge.is_negated
+            and edge.weight >= 0.5
+        ]
+        if len(edges) < 2:
+            return []
+
+        edges.sort(key=lambda item: item.weight, reverse=True)
+        adjectives = [
+            self._property_adjective(node, topic)
+            for edge in edges
+            if (node := self.graph.nodes.get(edge.target_id)) is not None
+        ]
+        if len(adjectives) < 2:
+            return []
+
+        primary = " и ".join(adjectives)
+        secondary = " и ".join(reversed(adjectives))
+        variants = [primary]
+        if secondary != primary:
+            variants.append(secondary)
+
+        candidates: list[_Candidate] = []
+        for variant in variants:
+            for construction in by_intent(
+                self.constructions, Intent.ANSWER_DIRECTLY
+            ):
+                if construction.id != "answer_properties":
+                    continue
+                values = {
+                    "X": self._slot_from_node(topic),
+                    "Y": SlotValue(
+                        lemma=variant,
+                        node_type=NodeType.PROPERTY,
+                        text=variant,
+                    ),
+                }
+                candidates.append(
+                    _Candidate(
+                        construction=construction,
+                        values=values,
+                        confidence=min(
+                            edge.weight for edge in edges[: len(adjectives)]
+                        ),
+                    )
+                )
+        return candidates
+
+    def _negative_candidates(
+        self,
+        statement: Statement,
+        subject: Node,
+        obj: Node,
+        intents: list[Intent],
+    ) -> list[_Candidate]:
+        """«Нет, трава не синяя» после коррекции (DEBT-210)."""
+        values = {
+            "X": self._slot_from_node(subject),
+            "Y": self._slot_from_node(obj),
+        }
+        by_relation = {
+            RelationType.HAS_PROPERTY: "no_property",
+            RelationType.IS_A: "no_is_a",
+        }
+        wanted_id = by_relation.get(statement.relation, "no_generic")
+
+        candidates: list[_Candidate] = []
+        for intent in intents:
+            for construction in by_intent(self.constructions, intent):
+                if construction.id != wanted_id:
+                    continue
+                if not construction.slot_names.issubset(values):
+                    continue
+                candidates.append(
+                    _Candidate(
+                        construction=construction,
+                        values=values,
+                        confidence=1.0,
+                    )
+                )
+        return candidates
+
+    def _contradiction_candidates(
+        self,
+        statement: Statement,
+        subject: Node,
+        obj: Node | None,
+        intents: list[Intent],
+        owner_id: uuid.UUID | None,
+    ) -> list[_Candidate]:
+        """«Трава — животное?» → «Нет, трава — это растение» (DEBT-210)."""
+        alternatives = contradiction_edges(
+            self.graph, subject, obj.id if obj is not None else None, owner_id
+        )
+        if not alternatives:
+            return []
+        best = max(alternatives, key=lambda item: item.weight)
+        true_node = self.graph.nodes.get(best.target_id)
+        if true_node is None:
+            return []
+
+        values = {
+            "X": self._slot_from_node(subject),
+            "Y": (
+                self._slot_from_node(obj)
+                if obj is not None
+                else SlotValue(
+                    lemma=statement.object.lemma,
+                    node_type=statement.object.node_type,
+                    pos=statement.object.pos,
+                )
+            ),
+            "Z": self._slot_from_node(true_node),
+        }
+
+        candidates: list[_Candidate] = []
+        for intent in intents:
+            for construction in by_intent(self.constructions, intent):
+                if construction.id != "no_is_a_conflict":
+                    continue
+                if not construction.slot_names.issubset(values):
+                    continue
+                candidates.append(
+                    _Candidate(
+                        construction=construction,
+                        values=values,
+                        confidence=best.weight,
+                    )
+                )
+        return candidates
+
+    def _transitive_candidates(
+        self,
+        statement: Statement,
+        subject: Node,
+        intents: list[Intent],
+        owner_id: uuid.UUID | None,
+    ) -> list[_Candidate]:
+        """«Саша живёт в городе?» → «Да, Саша живёт в Москве (город)»."""
+        paths = transitive_edges(
+            self.graph, subject, statement, owner_id
+        )
+        candidates: list[_Candidate] = []
+        for first, middle, second, target, _ in paths:
+            verb, preposition = self._verb_parts_from_label(
+                first.metadata.get("label")
+            )
+            values = {
+                "X": self._slot_from_node(subject),
+                "Y": self._slot_from_node(middle),
+                "Z": self._slot_from_node(target),
+            }
+            for intent in intents:
+                for construction in by_intent(self.constructions, intent):
+                    if construction.id != "yes_transitive":
+                        continue
+                    if not self._vocabulary_matches(
+                        construction, verb, preposition
+                    ):
+                        continue
+                    if not construction.slot_names.issubset(values):
+                        continue
+                    candidates.append(
+                        _Candidate(
+                            construction=construction,
+                            values=values,
+                            verb_lemma=verb,
+                            preposition=preposition,
+                            confidence=min(first.weight, second.weight),
+                        )
+                    )
+        return candidates
+
     # --- служебные преобразования -------------------------------------
 
     def _slot_from_node(self, node: Node) -> SlotValue:
@@ -670,11 +892,13 @@ class Generator:
         )
 
     def _is_proper_name(self, node: Node) -> bool:
-        """Имя собственное: PROPN или имя пользователя из ребра «имя»."""
+        """Имя собственное: PROPN, ребро «имя» или pymorphy2 (DEBT-218)."""
         if str(node.metadata.get("pos") or "") == "PROPN":
             return True
         if node.name.casefold() == USER_LEMMA:
             return False
+        if self.morph.is_proper_word(node.name):
+            return True
         return any(
             edge.metadata.get("label") == USER_NAME_LABEL
             and not edge.is_negated
@@ -796,6 +1020,9 @@ class Generator:
         case = spec.case
         if case == "auto":
             case = case_for_preposition(candidate.preposition)
+
+        if value.text is not None:
+            return value.text
 
         if value.is_user and value.node_type is NodeType.CONCEPT:
             return _USER_PRONOUNS.get(case, "ты")

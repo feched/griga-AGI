@@ -17,6 +17,9 @@ _NOUN_POS = frozenset({"NOUN"})
 _PROPERTY_POS = frozenset({"ADJF", "ADJS", "COMP", "PRTF", "PRTS"})
 _VERB_POS = frozenset({"VERB", "INFN", "GRND"})
 _PRONOUN_POS = frozenset({"NPRO"})
+# Граммемы имён собственных в pymorphy2 (DEBT-218). «Саша» → Name,
+# «Москва» → Geox. Обычные существительные этих граммем не имеют.
+_PROPER_GRAMMEMES = frozenset({"Name", "Surn", "Patr", "Orgn", "Geox", "Trad"})
 _FUNCTION_POS = frozenset(
     {"PREP", "CONJ", "PRCL", "INTJ", "NPRO", "NUMR", "PRED", "NPRO"}
 )
@@ -120,6 +123,17 @@ class Morphology:
 
     def is_preposition(self, word: str) -> bool:
         return self.pos(word) == "PREP"
+
+    def is_proper_word(self, word: str) -> bool:
+        """Имя собственное по pymorphy2, без опоры на UDPipe.
+
+        Нужно для капитализации имён, которые UDPipe пометил как NOUN
+        (DEBT-218). Составные термины («черная дыра») сюда не относятся.
+        """
+        if " " in word.strip():
+            return False
+        grammemes = set(self.tag(word).grammemes)
+        return bool(grammemes & _PROPER_GRAMMEMES)
 
     def is_function(self, word: str) -> bool:
         return self.pos(word) in _FUNCTION_POS

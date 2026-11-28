@@ -251,6 +251,112 @@
       "yes_no": true
     },
     {
+      "id": "yes_transitive",
+      "intent": "ответить_прямо",
+      "template": "Да, {X} {VERB_PRES} {PREP} {Y} ({Z}).",
+      "graph_pattern": {"relation": "related_to", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "auto"},
+        "Z": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 1.4,
+      "yes_no": true
+    },
+    {
+      "id": "answer_properties",
+      "intent": "ответить_прямо",
+      "template": "{X} — {Y}.",
+      "graph_pattern": {"relation": "has_property", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "adjective", "case": "nominative"}
+      },
+      "weight": 1.4
+    },
+    {
+      "id": "no_property",
+      "intent": "ответить_прямо",
+      "template": "Нет, {X} не {Y}.",
+      "graph_pattern": {"relation": "has_property", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "adjective", "case": "nominative", "agree_with": "X"}
+      },
+      "weight": 1.4,
+      "yes_no": true
+    },
+    {
+      "id": "no_is_a",
+      "intent": "ответить_прямо",
+      "template": "Нет, {X} — это не {Y}.",
+      "graph_pattern": {"relation": "is_a", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 1.4,
+      "yes_no": true
+    },
+    {
+      "id": "no_is_a_conflict",
+      "intent": "ответить_прямо",
+      "template": "Нет, {X} — это {Z}, а не {Y}.",
+      "graph_pattern": {"relation": "is_a", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "nominative"},
+        "Z": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 1.6,
+      "yes_no": true
+    },
+    {
+      "id": "no_generic",
+      "intent": "ответить_прямо",
+      "template": "Нет, это не так.",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 1.2,
+      "yes_no": true
+    },
+    {
+      "id": "hedge_yes_is_a",
+      "intent": "ответить_с_оговоркой",
+      "template": "Скорее всего, да: {X} — это {Y}.",
+      "graph_pattern": {"relation": "is_a", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 1.1,
+      "yes_no": true
+    },
+    {
+      "id": "hedge_yes_property",
+      "intent": "ответить_с_оговоркой",
+      "template": "Скорее всего, да: {X} — {Y}.",
+      "graph_pattern": {"relation": "has_property", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "adjective", "case": "nominative", "agree_with": "X"}
+      },
+      "weight": 1.1,
+      "yes_no": true
+    },
+    {
+      "id": "hedge_yes_related",
+      "intent": "ответить_с_оговоркой",
+      "template": "Кажется, это так: {X} и {Y} связаны.",
+      "graph_pattern": {"relation": "related_to", "direction": "forward"},
+      "slots": {
+        "X": {"pos": "noun", "case": "nominative"},
+        "Y": {"pos": "noun", "case": "nominative"}
+      },
+      "weight": 1.0,
+      "yes_no": true
+    },
+    {
       "id": "hedge_is_a",
       "intent": "ответить_с_оговоркой",
       "template": "Если я правильно помню, {X} — это {Y}.",
