@@ -424,6 +424,24 @@ class PerceptionParser:
             sentence,
         )
 
+    @staticmethod
+    def _adjective_negated(adjective, markers: Markers) -> bool:
+        """«Нет, яблоко сухое» — коррекция, а не «яблоко не сухое».
+
+        UDPipe может прицепить вводное «Нет» к прилагательному-сказуемому.
+        Если из отрицающих частиц есть только «нет», это маркер коррекции.
+        """
+        if not adjective.negated:
+            return False
+        if not markers.correction:
+            return True
+        negating = {
+            child.form.lower()
+            for child in adjective.children
+            if child.form.lower() in {"не", "нет", "ни"}
+        }
+        return bool(negating & {"не", "ни"})
+
     def _confidence(
         self, polarity: Polarity, is_question: bool
     ) -> float:
@@ -711,7 +729,9 @@ class PerceptionParser:
                 continue
 
             adjective_polarity = (
-                Polarity.NEGATED if adjective.negated else polarity
+                Polarity.NEGATED
+                if self._adjective_negated(adjective, markers)
+                else polarity
             )
             statements.append(
                 self._statement(

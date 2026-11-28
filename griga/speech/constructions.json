@@ -465,6 +465,38 @@
       "weight": 1.0
     },
     {
+      "id": "clarify_rephrase",
+      "intent": "уточнить",
+      "template": "Я не совсем понял. Можешь переформулировать?",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 0.96
+    },
+    {
+      "id": "clarify_essence",
+      "intent": "уточнить",
+      "template": "Интересно, но я не уловил суть. Расскажи по-другому?",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 0.92
+    },
+    {
+      "id": "clarify_confused",
+      "intent": "уточнить",
+      "template": "Что-то я запутался. О чём именно ты говоришь?",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 0.88
+    },
+    {
+      "id": "clarify_details",
+      "intent": "уточнить",
+      "template": "Можешь объяснить это чуть подробнее?",
+      "graph_pattern": {},
+      "slots": {},
+      "weight": 0.84
+    },
+    {
       "id": "clarify_topic",
       "intent": "уточнить",
       "template": "Ты про {X}? Расскажи чуть подробнее.",

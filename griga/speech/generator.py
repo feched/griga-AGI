@@ -75,6 +75,7 @@ _USER_PRONOUNS = {
 class TurnContext:
     last_response: str | None = None
     turn_index: int = 0
+    recent_responses: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -155,9 +156,27 @@ class Generator:
         )
 
         attempts = 0
+        recent = {
+            _normalize_text(item) for item in context.recent_responses if item
+        }
         for candidate in candidates:
             text = self.render(candidate)
             if not text:
+                continue
+            normalized = _normalize_text(text)
+            # Анти-повтор: уточнения не должны звучать одинаково несколько
+            # ходов подряд — берём следующую конструкцию, не тратя попытку
+            # (DEBT-214). Для остальных намерений сравниваем только с
+            # последней репликой.
+            if (
+                candidate.construction.intent is Intent.CLARIFY
+                and normalized in recent
+            ):
+                continue
+            if (
+                context.last_response
+                and normalized == _normalize_text(context.last_response)
+            ):
                 continue
             attempts += 1
             if self._monitor(text, candidate, decision, context):

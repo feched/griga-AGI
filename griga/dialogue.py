@@ -119,6 +119,9 @@ class Dialogue:
             TurnContext(
                 last_response=self.last_response,
                 turn_index=self.turn_index,
+                recent_responses=tuple(
+                    response for _, response in self.history[-5:]
+                ),
             ),
             owner_id=self.owner_id,
         )

@@ -20,7 +20,92 @@ from griga.perception.models import (
     Polarity,
     Statement,
 )
+from griga.perception.morphology import normalize_word
 from griga.validation import GraphValidator
+
+
+# Категории свойств для умной коррекции (DEBT-216). В v0.1 это
+# небольшой офлайн-словарь: «Нет, яблоко зелёное» гасит только цвет,
+# а форму («круглое») не трогает.
+_PROPERTY_CATEGORIES: dict[str, frozenset[str]] = {
+    "цвет": frozenset(
+        {
+            "красный", "зеленый", "синий", "голубой", "желтый",
+            "белый", "черный", "серый", "коричневый", "оранжевый",
+            "фиолетовый", "розовый", "бирюзовый", "золотой",
+            "серебряный", "бежевый", "бордовый",
+        }
+    ),
+    "форма": frozenset(
+        {
+            "круглый", "квадратный", "овальный", "прямоугольный",
+            "треугольный", "кубический", "шарообразный",
+        }
+    ),
+    "размер": frozenset(
+        {
+            "большой", "маленький", "огромный", "крошечный",
+            "высокий", "низкий", "длинный", "короткий",
+            "широкий", "узкий", "глубокий", "мелкий",
+        }
+    ),
+    "вкус": frozenset(
+        {
+            "сладкий", "кислый", "горький", "соленый", "острый",
+            "пресный", "сочный", "терпкий",
+        }
+    ),
+    "температура": frozenset(
+        {"горячий", "холодный", "теплый", "прохладный", "ледяной"}
+    ),
+    "материал": frozenset(
+        {
+            "деревянный", "металлический", "пластиковый",
+            "стеклянный", "бумажный", "каменный", "железный",
+        }
+    ),
+    "текстура": frozenset(
+        {"мягкий", "твердый", "гладкий", "шершавый", "пушистый"}
+    ),
+}
+
+
+def _property_category(lemma: str) -> str | None:
+    word = normalize_word(lemma)
+    for category, words in _PROPERTY_CATEGORIES.items():
+        if word in words:
+            return category
+    return None
+
+
+def _correction_targets(
+    statement: Statement,
+    candidates: list[Edge],
+    graph: KnowledgeGraph,
+) -> list[Edge]:
+    """Какие рёбра гасить при коррекции «Нет, X Y» (DEBT-216).
+
+    Если у нового значения есть категория (цвет, форма, …), гасим
+    только свойства той же категории. Если категории нет — самое
+    свежее ребро: пользователь обычно исправляет последнюю ошибку.
+    """
+    if statement.relation is not RelationType.HAS_PROPERTY:
+        return candidates
+    if not candidates:
+        return candidates
+
+    category = _property_category(statement.object.lemma)
+    if category is not None:
+        same_category = [
+            edge
+            for edge in candidates
+            if (target := graph.nodes.get(edge.target_id)) is not None
+            and _property_category(target.name) == category
+        ]
+        if same_category:
+            return same_category
+
+    return candidates[-1:]
 
 
 @dataclass(frozen=True)
@@ -125,11 +210,12 @@ def _negate_for_statement(
     statement: Statement,
     owner_id: uuid.UUID | None,
 ) -> list[Edge]:
-    """Гасит рёбра, которые опровергает коррекция (DEBT-209).
+    """Гасит рёбра, которые опровергает коррекция (DEBT-209, DEBT-216).
 
-    «Нет, трава зелёная» отменяет прежние свойства того же субъекта.
-    Ограничение v0.1: измерения свойств не различаются, поэтому гасятся
-    все рёбра того же отношения, кроме нового объекта.
+    «Нет, трава зелёная» отменяет прежнее свойство того же субъекта.
+    Для `has_property` коррекция умная: гасится свойство той же
+    категории (цвет/форма/…), а если категория неизвестна — самое
+    свежее ребро. Так «Нет, яблоко зелёное» не стирает «круглое».
     """
     subject = graph.find_visible_node(
         statement.subject.lemma,
@@ -171,6 +257,7 @@ def _negate_for_statement(
             and (target := graph.nodes.get(edge.target_id)) is not None
             and target.name.strip().casefold() != wanted
         ]
+        candidates = _correction_targets(statement, candidates, graph)
 
     for edge in candidates:
         if owner_id is not None and edge.owner_id not in (None, owner_id):
